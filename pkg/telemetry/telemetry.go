@@ -2,7 +2,7 @@ package telemetry
 
 import "fmt"
 
-const RustTelemetryReference = "/home/zeyufu/Desktop/emberforge/crates/telemetry/src/lib.rs"
+const TelemetryReference = "github.com/PeterPonyu/emberforge-go/pkg/telemetry"
 
 type Event struct {
 	Name    string

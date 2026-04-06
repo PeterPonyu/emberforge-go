@@ -1,3 +1,3 @@
-module github.com/zeyufu/emberforge-translations/emberforge-go
+module github.com/PeterPonyu/emberforge-go
 
 go 1.22

@@ -2,12 +2,12 @@ package commands
 
 import "slices"
 
-const ClaudeCommandsReference = "/home/zeyufu/Desktop/claude-code-src/commands.ts"
+const CommandsReference = "github.com/PeterPonyu/emberforge-go/pkg/commands"
 
 var defaultCommands = []CommandSpec{
-	{Name: "help", Description: "Show the translated command registry"},
-	{Name: "status", Description: "Report starter runtime status"},
-	{Name: "model", Description: "Mirror a Rust-style CLI command"},
+	{Name: "help", Description: "Show the command registry"},
+	{Name: "status", Description: "Report runtime status"},
+	{Name: "model", Description: "Switch or inspect the active model"},
 }
 
 type CommandRegistry struct {

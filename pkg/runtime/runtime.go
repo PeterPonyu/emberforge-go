@@ -3,12 +3,12 @@ package runtime
 import (
 	"strings"
 
-	"github.com/zeyufu/emberforge-translations/emberforge-go/pkg/api"
-	"github.com/zeyufu/emberforge-translations/emberforge-go/pkg/telemetry"
-	"github.com/zeyufu/emberforge-translations/emberforge-go/pkg/tools"
+	"github.com/PeterPonyu/emberforge-go/pkg/api"
+	"github.com/PeterPonyu/emberforge-go/pkg/telemetry"
+	"github.com/PeterPonyu/emberforge-go/pkg/tools"
 )
 
-const RustRuntimeReference = "/home/zeyufu/Desktop/emberforge/crates/runtime/src/lib.rs"
+const RustRuntimeReference = "github.com/PeterPonyu/emberforge-go/pkg/runtime"
 
 type ConversationRuntime struct {
 	Provider     api.Provider

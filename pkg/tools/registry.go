@@ -2,7 +2,7 @@ package tools
 
 import "slices"
 
-const ClaudeToolsReference = "/home/zeyufu/Desktop/claude-code-src/tools.ts"
+const ToolsReference = "github.com/PeterPonyu/emberforge-go/pkg/tools"
 
 var defaultTools = []ToolSpec{
 	{Name: "read_file", Description: "Read workspace files"},

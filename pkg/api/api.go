@@ -1,3 +1,3 @@
 package api
 
-const RustAPIReference = "/home/zeyufu/Desktop/emberforge/crates/api/src/providers/mod.rs"
+const RustAPIReference = "github.com/PeterPonyu/emberforge-go/pkg/api"

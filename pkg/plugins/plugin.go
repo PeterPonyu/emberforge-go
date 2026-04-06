@@ -1,6 +1,6 @@
 package plugins
 
-const RustPluginsReference = "/home/zeyufu/Desktop/emberforge/crates/plugins/src/types.rs"
+const PluginsReference = "github.com/PeterPonyu/emberforge-go/pkg/plugins"
 
 type ExamplePlugin struct {
 	info PluginMetadata
@@ -11,7 +11,7 @@ func NewExamplePlugin() ExamplePlugin {
 		ID:          "example.bundled",
 		Name:        "ExamplePlugin",
 		Version:     "0.1.0",
-		Description: "A minimal plugin mirroring emberforge::plugins::Plugin",
+		Description: "A minimal bundled example plugin",
 	}}
 }
 

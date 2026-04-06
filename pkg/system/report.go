@@ -9,5 +9,9 @@ type StarterSystemReport struct {
 	LSPSummary        string
 	RustAnchor        string
 	TurnCount         int
+	HandledRequestCount int
+	LifecycleState    string
+	LastRoute         string
+	LastPhaseHistory  []string
 	LastTurnInput     string
 }
