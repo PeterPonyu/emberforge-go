@@ -1,0 +1,57 @@
+package runtime
+
+import (
+	"strings"
+
+	"github.com/zeyufu/emberforge-translations/emberforge-go/pkg/api"
+	"github.com/zeyufu/emberforge-translations/emberforge-go/pkg/telemetry"
+	"github.com/zeyufu/emberforge-translations/emberforge-go/pkg/tools"
+)
+
+const RustRuntimeReference = "/home/zeyufu/Desktop/emberforge/crates/runtime/src/lib.rs"
+
+type ConversationRuntime struct {
+	Provider     api.Provider
+	ToolExecutor tools.ToolExecutor
+	Telemetry    telemetry.TelemetrySink
+	Session      *Session
+}
+
+func NewConversationRuntime(provider api.Provider, toolExecutor tools.ToolExecutor, telemetrySink telemetry.TelemetrySink) *ConversationRuntime {
+	return &ConversationRuntime{
+		Provider:     provider,
+		ToolExecutor: toolExecutor,
+		Telemetry:    telemetrySink,
+		Session:      NewSession(),
+	}
+}
+
+func (r *ConversationRuntime) RunTurn(input string) string {
+	r.Telemetry.Record(telemetry.Event{Name: "turn_started", Details: input})
+
+	var output string
+
+	if strings.HasPrefix(input, "/tool ") {
+		payload := strings.TrimPrefix(input, "/tool ")
+		output = r.ToolExecutor.Execute("bash", payload)
+		r.Telemetry.Record(telemetry.Event{Name: "tool_executed", Details: output})
+	} else {
+		response := r.Provider.SendMessage(api.MessageRequest{
+			Model:  api.DefaultModel,
+			Prompt: input,
+		})
+		output = response.Text
+		r.Telemetry.Record(telemetry.Event{Name: "provider_completed", Details: output})
+	}
+
+	r.Session.AddTurn(SessionTurn{Input: input, Output: output})
+	return output
+}
+
+func (r *ConversationRuntime) TurnCount() int {
+	return r.Session.Count()
+}
+
+func (r *ConversationRuntime) LastTurn() (SessionTurn, bool) {
+	return r.Session.LastTurn()
+}

@@ -1,0 +1,13 @@
+package system
+
+type StarterSystemReport struct {
+	AppName           string
+	CommandCount      int
+	ToolCount         int
+	PluginCount       int
+	ServerDescription string
+	LSPSummary        string
+	RustAnchor        string
+	TurnCount         int
+	LastTurnInput     string
+}
