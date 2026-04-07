@@ -14,7 +14,7 @@ import (
 
 type StarterSystemApplication struct {
 	Config         StarterSystemConfig
-	Provider       api.MockProvider
+	Provider       api.Provider
 	ToolExecutor   tools.MockToolExecutor
 	Telemetry      telemetry.ConsoleTelemetrySink
 	Runtime        *runtime.ConversationRuntime
@@ -32,7 +32,7 @@ type StarterSystemApplication struct {
 }
 
 func NewStarterSystemApplication(config StarterSystemConfig) *StarterSystemApplication {
-	provider := api.MockProvider{}
+	provider := api.NewOllamaProvider("", api.DefaultModel)
 	toolExecutor := tools.MockToolExecutor{}
 	telemetrySink := telemetry.ConsoleTelemetrySink{}
 	plugin := plugins.NewExamplePlugin()

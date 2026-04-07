@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/PeterPonyu/emberforge-go/pkg/api"
@@ -36,12 +37,17 @@ func (r *ConversationRuntime) RunTurn(input string) string {
 		output = r.ToolExecutor.Execute("bash", payload)
 		r.Telemetry.Record(telemetry.Event{Name: "tool_executed", Details: output})
 	} else {
-		response := r.Provider.SendMessage(api.MessageRequest{
+		response, err := r.Provider.SendMessage(api.MessageRequest{
 			Model:  api.DefaultModel,
 			Prompt: input,
 		})
-		output = response.Text
-		r.Telemetry.Record(telemetry.Event{Name: "provider_completed", Details: output})
+		if err != nil {
+			output = fmt.Sprintf("[ollama error] %s", err.Error())
+			r.Telemetry.Record(telemetry.Event{Name: "provider_error", Details: output})
+		} else {
+			output = response.Text
+			r.Telemetry.Record(telemetry.Event{Name: "provider_completed", Details: output})
+		}
 	}
 
 	r.Session.AddTurn(SessionTurn{Input: input, Output: output})

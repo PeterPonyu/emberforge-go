@@ -70,7 +70,7 @@ Emberforge reads configuration from (in order of priority):
 Environment variables:
 
 - `EMBER_CONFIG_HOME` -- override config directory
-- `OLLAMA_BASE_URL` -- custom Ollama endpoint (default: `http://localhost:11434/v1`)
+- `OLLAMA_BASE_URL` -- custom Ollama endpoint (default: `http://localhost:11434`)
 - `ANTHROPIC_API_KEY` -- Anthropic API credentials
 - `XAI_API_KEY` -- xAI API credentials
 
