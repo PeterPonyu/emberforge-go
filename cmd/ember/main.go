@@ -1,12 +1,35 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/PeterPonyu/emberforge-go/pkg/server"
 	"github.com/PeterPonyu/emberforge-go/pkg/system"
 )
 
 func main() {
+	serveAddr := flag.String("serve", "", "address to listen on for HTTP/SSE server (e.g. :8080); if empty, run demo mode")
+	flag.Parse()
+
+	if *serveAddr != "" {
+		store := server.NewSessionStore()
+		hs := server.NewHttpServer(*serveAddr, store)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		fmt.Printf("emberforge-go HTTP server listening on %s\n", *serveAddr)
+		if err := hs.Start(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Default: demo mode (original behaviour).
 	app := system.NewStarterSystemApplication(system.DefaultStarterSystemConfig())
 	outputs := app.RunDemo()
 	app.Shutdown()
