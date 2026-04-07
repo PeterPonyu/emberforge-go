@@ -45,31 +45,26 @@ func TestParityReplay_ScenarioSessionLifecycle(t *testing.T) {
 			}
 			sessionID = sess.ID
 		case "message":
-			// Fixture messages carry a blocks array; extract the first text block's
-			// content as the canonical string to store.
 			var msg struct {
-				Role   string `json:"role"`
-				Blocks []struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"blocks"`
+				Role    string          `json:"role"`
+				Content string          `json:"content"`
+				Blocks  json.RawMessage `json:"blocks"`
 			}
 			if err := json.Unmarshal(line, &msg); err != nil {
 				t.Fatalf("message decode: %v", err)
 			}
-			content := ""
-			for _, b := range msg.Blocks {
-				if b.Type == "text" {
-					content = b.Text
-					break
+			if len(msg.Blocks) > 0 {
+				if err := store.AppendBlocksMessage(sessionID, msg.Role, msg.Blocks); err != nil {
+					t.Fatalf("AppendBlocksMessage: %v", err)
 				}
-			}
-			if err := store.AppendMessage(sessionID, msg.Role, content); err != nil {
-				t.Fatalf("AppendMessage: %v", err)
+			} else {
+				if err := store.AppendMessage(sessionID, msg.Role, msg.Content); err != nil {
+					t.Fatalf("AppendMessage: %v", err)
+				}
 			}
 			expectedMessageCount++
 		case "tool_use", "tool_result":
-			// tool_use/tool_result blocks not yet round-tripped in go — tracked for iter6
+			// tool_use/tool_result records are now captured as message records with blocks
 			continue
 		case "session_close":
 			// Sanity check: closing id must match the session we created.

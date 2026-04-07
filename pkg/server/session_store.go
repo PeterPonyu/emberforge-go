@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -16,9 +17,10 @@ type Session struct {
 }
 
 type Message struct {
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	Timestamp time.Time `json:"timestamp"`
+	Role      string          `json:"role"`
+	Content   string          `json:"content,omitempty"`
+	Blocks    json.RawMessage `json:"blocks,omitempty"`
+	Timestamp time.Time       `json:"timestamp"`
 }
 
 // SessionSummary is the lightweight view returned by GET /sessions.
@@ -97,6 +99,22 @@ func (ss *SessionStore) AppendMessage(id, role, content string) error {
 	s.Messages = append(s.Messages, Message{
 		Role:      role,
 		Content:   content,
+		Timestamp: time.Now().UTC(),
+	})
+	return nil
+}
+
+// AppendBlocksMessage appends a Message with a raw blocks JSON array and empty Content.
+func (ss *SessionStore) AppendBlocksMessage(id, role string, blocks json.RawMessage) error {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	s, ok := ss.sessions[id]
+	if !ok {
+		return errors.New("session_store: session not found")
+	}
+	s.Messages = append(s.Messages, Message{
+		Role:      role,
+		Blocks:    blocks,
 		Timestamp: time.Now().UTC(),
 	})
 	return nil
