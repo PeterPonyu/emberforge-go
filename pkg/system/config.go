@@ -6,6 +6,8 @@ type StarterSystemConfig struct {
 	CommandDemoName string
 	Greeting        string
 	ToolDemoCommand string
+	MaxTurns        int
+	MaxCostUSD      float64
 }
 
 func DefaultStarterSystemConfig() StarterSystemConfig {
@@ -15,5 +17,7 @@ func DefaultStarterSystemConfig() StarterSystemConfig {
 		CommandDemoName: "help",
 		Greeting:        "hello from go system",
 		ToolDemoCommand: "printf hello",
+		MaxTurns:        16,
+		MaxCostUSD:      1.0,
 	}
 }

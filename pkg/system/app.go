@@ -28,6 +28,7 @@ type StarterSystemApplication struct {
 	Lifecycle       *LifecycleTracker
 	Dispatcher      SystemDispatcher
 	Sequence        *ControlSequenceEngine
+	Turn            *TurnEngine
 }
 
 func NewStarterSystemApplication(config StarterSystemConfig) *StarterSystemApplication {
@@ -40,6 +41,8 @@ func NewStarterSystemApplication(config StarterSystemConfig) *StarterSystemAppli
 	lifecycle := NewLifecycleTracker()
 	dispatcher := NewSystemDispatcher(commandRegistry, toolRegistry)
 	runtimeCore := runtime.NewConversationRuntime(provider, toolExecutor, telemetrySink)
+	sequence := NewControlSequenceEngine(runtimeCore, dispatcher, lifecycle, telemetrySink)
+	turn := NewTurnEngine(sequence, TurnBudget{MaxTurns: config.MaxTurns, MaxCostUSD: config.MaxCostUSD})
 	return &StarterSystemApplication{
 		Config:          config,
 		Provider:        provider,
@@ -55,7 +58,8 @@ func NewStarterSystemApplication(config StarterSystemConfig) *StarterSystemAppli
 		Paths:           compat.DefaultUpstreamPaths(),
 		Lifecycle:       lifecycle,
 		Dispatcher:      dispatcher,
-		Sequence:        NewControlSequenceEngine(runtimeCore, dispatcher, lifecycle, telemetrySink),
+		Sequence:        sequence,
+		Turn:            turn,
 	}
 }
 
