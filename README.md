@@ -1,8 +1,8 @@
 # Emberforge (Go)
 
-**A local-first coding forge for serious developers.**
+**Local-first terminal tooling for language-model workflows.**
 
-Emberforge is an interactive coding assistant that runs in your terminal, powered by local LLMs via Ollama. It provides a rich REPL with tool execution, session management, plugins, and multi-provider support. This is the Go implementation of the Emberforge coding assistant.
+Emberforge is a terminal coding tool that works with local models through Ollama and can use hosted providers when configured. It includes a REPL, tool execution, session management, plugins, and multiple provider backends. This repository contains the Go implementation.
 
 ## Quick Start
 
@@ -23,11 +23,11 @@ go build -o ember ./cmd/ember
 ## Features
 
 - **Local-first**: Runs with Ollama -- no API keys needed for local models
-- **Cloud fallback**: Anthropic Claude, xAI Grok when API keys are configured
-- **Smart routing**: Select models by task complexity
-- **Rich slash commands**: `/help`, `/status`, `/model`, `/compact`, `/review`, `/commit`, and more
-- **Built-in tools**: bash, file ops, search, and more
-- **Session persistence**: Save, resume, export conversations
+- **Hosted providers**: Anthropic Claude and xAI Grok when API keys are configured
+- **Task-based model selection**: Select models by task complexity
+- **Slash commands**: `/help`, `/status`, `/model`, `/compact`, `/review`, `/commit`, and more
+- **Tools**: bash, file ops, search, and more
+- **Sessions**: Save, resume, export conversations
 - **Plugin system**: Extend with custom tools and hooks
 - **MCP integration**: Connect to Model Context Protocol servers
 - **Telemetry**: Session tracing and usage analytics
