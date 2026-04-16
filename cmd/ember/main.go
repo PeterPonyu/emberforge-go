@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/PeterPonyu/emberforge-go/pkg/server"
@@ -14,7 +15,33 @@ import (
 
 func main() {
 	serveAddr := flag.String("serve", "", "address to listen on for HTTP/SSE server (e.g. :8080); if empty, run demo mode")
+	model := flag.String("model", "", "model to use with the Ollama provider")
 	flag.Parse()
+
+	if strings.TrimSpace(*model) != "" {
+		os.Setenv("OLLAMA_MODEL", strings.TrimSpace(*model))
+		os.Setenv("EMBER_MODEL", strings.TrimSpace(*model))
+	}
+
+	if flag.Arg(0) == "doctor" {
+		app := system.NewStarterSystemApplication(system.DefaultStarterSystemConfig())
+		fmt.Println(system.BuildDoctorReport(app.Report()))
+		app.Shutdown()
+		return
+	}
+
+	rawCommand := strings.TrimSpace(strings.Join(flag.Args(), " "))
+	if strings.HasPrefix(rawCommand, "/") {
+		app := system.NewStarterSystemApplication(system.DefaultStarterSystemConfig())
+		if output, ok := system.ExecuteStarterSlashCommand(app, rawCommand); ok {
+			fmt.Println(output)
+			app.Shutdown()
+			return
+		}
+		fmt.Println(app.Sequence.Handle(rawCommand).Output)
+		app.Shutdown()
+		return
+	}
 
 	if *serveAddr != "" {
 		store := server.NewSessionStore()

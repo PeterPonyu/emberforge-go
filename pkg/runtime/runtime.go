@@ -38,7 +38,7 @@ func (r *ConversationRuntime) RunTurn(input string) string {
 		r.Telemetry.Record(telemetry.Event{Name: "tool_executed", Details: output})
 	} else {
 		response, err := r.Provider.SendMessage(api.MessageRequest{
-			Model:  api.DefaultModel,
+			Model:  "",
 			Prompt: input,
 		})
 		if err != nil {
