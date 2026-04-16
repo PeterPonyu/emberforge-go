@@ -97,14 +97,34 @@ func TestExecuteStarterSlashCommandBuddyLifecycle(t *testing.T) {
 		t.Fatalf("unexpected /buddy hatch output: %q", output)
 	}
 
+	output, ok = ExecuteStarterSlashCommand(app, "/buddy hatch")
+	if !ok || !strings.Contains(output, "status: companion already active") || !strings.Contains(output, "/buddy rehatch") {
+		t.Fatalf("unexpected second /buddy hatch output: %q", output)
+	}
+
 	output, ok = ExecuteStarterSlashCommand(app, "/buddy mute")
-	if !ok || !strings.Contains(output, "status: muted") {
+	if !ok || !strings.Contains(output, "status: muted") || !strings.Contains(output, "hide quietly") {
 		t.Fatalf("unexpected /buddy mute output: %q", output)
+	}
+
+	output, ok = ExecuteStarterSlashCommand(app, "/buddy mute")
+	if !ok || !strings.Contains(output, "status: already muted") {
+		t.Fatalf("unexpected second /buddy mute output: %q", output)
 	}
 
 	output, ok = ExecuteStarterSlashCommand(app, "/buddy pet")
 	if !ok || !strings.Contains(output, "reaction: Waddles purrs happily!") {
 		t.Fatalf("unexpected /buddy pet output: %q", output)
+	}
+
+	output, ok = ExecuteStarterSlashCommand(app, "/buddy unmute")
+	if !ok || !strings.Contains(output, "status: active") || !strings.Contains(output, "welcome back") {
+		t.Fatalf("unexpected /buddy unmute output: %q", output)
+	}
+
+	output, ok = ExecuteStarterSlashCommand(app, "/buddy unmute")
+	if !ok || !strings.Contains(output, "status: already active") {
+		t.Fatalf("unexpected second /buddy unmute output: %q", output)
 	}
 
 	output, ok = ExecuteStarterSlashCommand(app, "/buddy rehatch")
