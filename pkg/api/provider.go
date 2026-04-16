@@ -1,6 +1,6 @@
 package api
 
-const DefaultModel = "claude-sonnet-4-6"
+const DefaultModel = "qwen3:8b"
 
 type Provider interface {
 	SendMessage(request MessageRequest) (MessageResponse, error)

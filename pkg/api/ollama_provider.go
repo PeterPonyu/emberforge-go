@@ -25,6 +25,15 @@ func NewOllamaProvider(baseURL, model string) *OllamaProvider {
 	if baseURL == "" {
 		baseURL = "http://localhost:11434"
 	}
+	if model == "" {
+		model = os.Getenv("OLLAMA_MODEL")
+	}
+	if model == "" {
+		model = os.Getenv("EMBER_MODEL")
+	}
+	if model == "" {
+		model = DefaultModel
+	}
 	return &OllamaProvider{
 		BaseURL: baseURL,
 		Model:   model,

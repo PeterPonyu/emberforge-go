@@ -16,6 +16,9 @@ go build -o ember ./cmd/ember
 # Or with a specific model
 ./ember --model qwen3:8b
 
+# Run diagnostics
+./ember doctor
+
 # One-shot prompt
 ./ember prompt "explain this codebase"
 ```
@@ -25,7 +28,7 @@ go build -o ember ./cmd/ember
 - **Local-first**: Runs with Ollama -- no API keys needed for local models
 - **Hosted providers**: Anthropic Claude and xAI Grok when API keys are configured
 - **Task-based model selection**: Select models by task complexity
-- **Slash commands**: `/help`, `/status`, `/model`, `/compact`, `/review`, `/commit`, and more
+- **Slash commands**: `/help`, `/status`, `/doctor`, `/model`, `/questions`, `/tasks`, `/buddy`, `/compact`, `/review`, `/commit`, `/pr`, and more
 - **Tools**: bash, file ops, search, and more
 - **Sessions**: Save, resume, export conversations
 - **Plugin system**: Extend with custom tools and hooks

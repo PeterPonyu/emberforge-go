@@ -72,6 +72,14 @@ func TestOllamaProvider_DefaultBaseURL(t *testing.T) {
 	}
 }
 
+func TestOllamaProvider_DefaultModelFromEnv(t *testing.T) {
+	t.Setenv("OLLAMA_MODEL", "env-model")
+	p := NewOllamaProvider("", "")
+	if p.Model != "env-model" {
+		t.Fatalf("got model %q want %q", p.Model, "env-model")
+	}
+}
+
 func TestMockProvider_RetainsInterface(t *testing.T) {
 	var p Provider = MockProvider{}
 	resp, err := p.SendMessage(MessageRequest{Model: "m", Prompt: "hi"})

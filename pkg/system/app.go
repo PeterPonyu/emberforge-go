@@ -13,29 +13,33 @@ import (
 )
 
 type StarterSystemApplication struct {
-	Config         StarterSystemConfig
-	Provider       api.Provider
-	ToolExecutor   tools.ToolExecutor
-	Telemetry      telemetry.ConsoleTelemetrySink
-	Runtime        *runtime.ConversationRuntime
-	Plugin         plugins.ExamplePlugin
-	PluginRegistry plugins.PluginRegistry
-	CommandRegistry commands.CommandRegistry
-	ToolRegistry    tools.ToolRegistry
-	Server          server.Server
-	LSP             lsp.Manager
-	Paths           compat.UpstreamPaths
-	Lifecycle       *LifecycleTracker
-	Dispatcher      SystemDispatcher
-	Sequence        *ControlSequenceEngine
-	Turn            *TurnEngine
+	Config            StarterSystemConfig
+	Provider          api.Provider
+	ToolExecutor      tools.ToolExecutor
+	Telemetry         telemetry.ConsoleTelemetrySink
+	Runtime           *runtime.ConversationRuntime
+	Plugin            plugins.ExamplePlugin
+	PluginRegistry    plugins.PluginRegistry
+	Buddy             *StarterBuddyState
+	TaskQuestionStore *TaskQuestionStateStore
+	CommandRegistry   commands.CommandRegistry
+	ToolRegistry      tools.ToolRegistry
+	Server            server.Server
+	LSP               lsp.Manager
+	Paths             compat.UpstreamPaths
+	Lifecycle         *LifecycleTracker
+	Dispatcher        SystemDispatcher
+	Sequence          *ControlSequenceEngine
+	Turn              *TurnEngine
 }
 
 func NewStarterSystemApplication(config StarterSystemConfig) *StarterSystemApplication {
-	provider := api.NewOllamaProvider("", api.DefaultModel)
+	provider := api.NewOllamaProvider("", "")
 	toolExecutor := tools.NewRealToolExecutor("")
 	telemetrySink := telemetry.ConsoleTelemetrySink{}
 	plugin := plugins.NewExamplePlugin()
+	buddy := NewStarterBuddyState("")
+	taskQuestionStore := NewTaskQuestionStateStore("")
 	commandRegistry := commands.NewCommandRegistry(nil)
 	toolRegistry := tools.NewToolRegistry(nil)
 	lifecycle := NewLifecycleTracker()
@@ -44,22 +48,24 @@ func NewStarterSystemApplication(config StarterSystemConfig) *StarterSystemAppli
 	sequence := NewControlSequenceEngine(runtimeCore, dispatcher, lifecycle, telemetrySink)
 	turn := NewTurnEngine(sequence, TurnBudget{MaxTurns: config.MaxTurns, MaxCostUSD: config.MaxCostUSD})
 	return &StarterSystemApplication{
-		Config:          config,
-		Provider:        provider,
-		ToolExecutor:    toolExecutor,
-		Telemetry:       telemetrySink,
-		Runtime:         runtimeCore,
-		Plugin:          plugin,
-		PluginRegistry:  plugins.NewPluginRegistry([]plugins.Plugin{plugin}),
-		CommandRegistry: commandRegistry,
-		ToolRegistry:    toolRegistry,
-		Server:          server.New(server.Config{Port: config.Port}),
-		LSP:             lsp.Manager{},
-		Paths:           compat.DefaultUpstreamPaths(),
-		Lifecycle:       lifecycle,
-		Dispatcher:      dispatcher,
-		Sequence:        sequence,
-		Turn:            turn,
+		Config:            config,
+		Provider:          provider,
+		ToolExecutor:      toolExecutor,
+		Telemetry:         telemetrySink,
+		Runtime:           runtimeCore,
+		Plugin:            plugin,
+		PluginRegistry:    plugins.NewPluginRegistry([]plugins.Plugin{plugin}),
+		Buddy:             buddy,
+		TaskQuestionStore: taskQuestionStore,
+		CommandRegistry:   commandRegistry,
+		ToolRegistry:      toolRegistry,
+		Server:            server.New(server.Config{Port: config.Port}),
+		LSP:               lsp.Manager{},
+		Paths:             compat.DefaultUpstreamPaths(),
+		Lifecycle:         lifecycle,
+		Dispatcher:        dispatcher,
+		Sequence:          sequence,
+		Turn:              turn,
 	}
 }
 
@@ -90,18 +96,18 @@ func (app *StarterSystemApplication) Report() StarterSystemReport {
 		lastPhaseHistory = PhaseStrings(lastRecord.Phases)
 	}
 	return StarterSystemReport{
-		AppName:           app.Config.AppName,
-		CommandCount:      len(app.CommandRegistry.List()),
-		ToolCount:         len(app.ToolRegistry.List()),
-		PluginCount:       len(app.PluginRegistry.List()),
-		ServerDescription: app.Server.Describe(),
-		LSPSummary:        app.LSP.Summary(),
-		RustAnchor:        app.Paths.EmberRuntimeLib,
-		TurnCount:         app.Runtime.TurnCount(),
+		AppName:             app.Config.AppName,
+		CommandCount:        len(app.CommandRegistry.List()),
+		ToolCount:           len(app.ToolRegistry.List()),
+		PluginCount:         len(app.PluginRegistry.List()),
+		ServerDescription:   app.Server.Describe(),
+		LSPSummary:          app.LSP.Summary(),
+		RustAnchor:          app.Paths.EmberRuntimeLib,
+		TurnCount:           app.Runtime.TurnCount(),
 		HandledRequestCount: len(app.Sequence.RecordsLog),
-		LifecycleState:    string(app.Sequence.Lifecycle.Current()),
-		LastRoute:         lastRoute,
-		LastPhaseHistory:  lastPhaseHistory,
-		LastTurnInput:     lastTurnInput,
+		LifecycleState:      string(app.Sequence.Lifecycle.Current()),
+		LastRoute:           lastRoute,
+		LastPhaseHistory:    lastPhaseHistory,
+		LastTurnInput:       lastTurnInput,
 	}
 }
