@@ -31,7 +31,7 @@ go build -o ember ./cmd/ember
 - **Slash commands**: `/help`, `/status`, `/doctor`, `/model`, `/questions`, `/tasks`, `/buddy`, `/compact`, `/review`, `/commit`, `/pr`, and more
 - **Tools**: bash, file ops, search, and more
 - **Sessions**: Save, resume, export conversations
-- **Plugin system**: Extend with custom tools today; runtime hook parity is planned
+- **Plugin system**: Plugin metadata/validation scaffolding today; custom-tool execution and runtime hook parity are planned
 - **MCP integration**: Connect to Model Context Protocol servers
 - **Telemetry**: Session tracing and usage analytics
 
