@@ -177,6 +177,12 @@ func renderBuddyCompanion(prefix string, companion StarterBuddyCompanion, note s
 	return strings.Join(lines, "\n")
 }
 
+func renderBuddyLines(prefix string, lines ...string) string {
+	parts := []string{prefix}
+	parts = append(parts, lines...)
+	return strings.Join(parts, "\n")
+}
+
 func ExecuteBuddyCommand(state *StarterBuddyState, payload string) string {
 	trimmed := strings.TrimSpace(payload)
 	action := ""
@@ -199,14 +205,14 @@ func ExecuteBuddyCommand(state *StarterBuddyState, payload string) string {
 			"tip: use /buddy hatch to get one",
 		}, "\n")
 	case "hatch":
-		companion, created := state.hatch()
-		if !created {
-			return renderBuddyCompanion(
+		if _, ok := state.current(); ok {
+			return renderBuddyLines(
 				"[command] buddy hatch",
-				companion,
-				"tip: use /buddy rehatch to roll a new companion",
+				"status: companion already active",
+				"tip: use /buddy to inspect it or /buddy rehatch to replace it",
 			)
 		}
+		companion, _ := state.hatch()
 		return renderBuddyCompanion(
 			"[command] buddy hatch",
 			companion,
@@ -236,8 +242,20 @@ func ExecuteBuddyCommand(state *StarterBuddyState, payload string) string {
 			"tip: use /buddy hatch to get one",
 		}, "\n")
 	case "mute":
-		if companion, ok := state.mute(); ok {
-			return renderBuddyCompanion("[command] buddy mute", *companion, "")
+		if companion, ok := state.current(); ok {
+			if companion.Muted {
+				return renderBuddyLines(
+					"[command] buddy mute",
+					"status: already muted",
+					"tip: use /buddy unmute to bring it back",
+				)
+			}
+			_, _ = state.mute()
+			return renderBuddyLines(
+				"[command] buddy mute",
+				"status: muted",
+				"note: companion will hide quietly until /buddy unmute",
+			)
 		}
 		return strings.Join([]string{
 			"[command] buddy mute",
@@ -245,8 +263,16 @@ func ExecuteBuddyCommand(state *StarterBuddyState, payload string) string {
 			"tip: use /buddy hatch to get one",
 		}, "\n")
 	case "unmute":
-		if companion, ok := state.unmute(); ok {
-			return renderBuddyCompanion("[command] buddy unmute", *companion, "")
+		if companion, ok := state.current(); ok {
+			if !companion.Muted {
+				return renderBuddyLines("[command] buddy unmute", "status: already active")
+			}
+			_, _ = state.unmute()
+			return renderBuddyLines(
+				"[command] buddy unmute",
+				"status: active",
+				"note: welcome back",
+			)
 		}
 		return strings.Join([]string{
 			"[command] buddy unmute",
