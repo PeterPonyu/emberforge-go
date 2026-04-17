@@ -31,7 +31,7 @@ go build -o ember ./cmd/ember
 - **Slash commands**: `/help`, `/status`, `/doctor`, `/model`, `/questions`, `/tasks`, `/buddy`, `/compact`, `/review`, `/commit`, `/pr`, and more
 - **Tools**: bash, file ops, search, and more
 - **Sessions**: Save, resume, export conversations
-- **Plugin system**: Plugin metadata/validation scaffolding today; custom-tool execution and runtime hook parity are planned
+- **Plugin system**: Includes plugin metadata and validation scaffolding
 - **MCP integration**: Connect to Model Context Protocol servers
 - **Telemetry**: Session tracing and usage analytics
 
@@ -59,7 +59,7 @@ pkg/
 | Provider | Models | Auth |
 | --- | --- | --- |
 | **Ollama** (local) | qwen3, llama3, gemma3, mistral, deepseek-r1, phi4, and many more | None needed |
-| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 | `ANTHROPIC_API_KEY` |
+| **Anthropic** | Claude Opus, Sonnet, and Haiku families | `ANTHROPIC_API_KEY` |
 | **xAI** | Grok 3, Grok 3 Mini | `XAI_API_KEY` |
 
 ## Configuration
