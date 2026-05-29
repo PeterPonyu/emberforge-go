@@ -2,7 +2,9 @@
 
 **Local-first terminal tooling for language-model workflows.**
 
-Emberforge is a terminal coding tool that works with local models through Ollama and can use hosted providers when configured. It includes a REPL, tool execution, session management, plugins, and multiple provider backends. This repository contains the Go implementation.
+Emberforge is a terminal coding tool that works with local models through Ollama and can use hosted providers when configured. It includes tool execution, session management, plugins, and multiple provider backends. This repository contains the Go implementation.
+
+> **Note:** The Go port is a work in progress. The interactive REPL and one-shot `prompt` command from the Rust reference are not yet wired up in the Go CLI. Today the binary supports `doctor`, slash commands, an HTTP/SSE server (`--serve`), and a default demo run (see [Quick Start](#quick-start)).
 
 ## Quick Start
 
@@ -10,18 +12,28 @@ Emberforge is a terminal coding tool that works with local models through Ollama
 # Build from source
 go build -o ember ./cmd/ember
 
-# Start the REPL (auto-detects Ollama)
-./ember
-
-# Or with a specific model
-./ember --model qwen3:8b
-
 # Run diagnostics
 ./ember doctor
 
-# One-shot prompt
-./ember prompt "explain this codebase"
+# Run a slash command directly
+./ember /help
+./ember /status
+
+# Start the HTTP/SSE server
+./ember --serve :8080
+
+# Run the demo flow (default when no command is given)
+./ember
+
+# Select a model for the Ollama provider (applies to the runs above)
+./ember --model qwen3:8b
 ```
+
+> The interactive REPL (`./ember` dropping into a prompt loop) and the one-shot
+> `./ember prompt "..."` command are documented in the Rust reference but are
+> **not yet implemented in the Go port**. Running `./ember` with no command
+> currently executes the demo flow rather than starting a REPL. These are
+> planned features; see issue #9 for tracking.
 
 ## Features
 
@@ -86,8 +98,11 @@ go build -o ember ./cmd/ember
 # Run tests
 go test ./...
 
-# Run
+# Run the demo flow
 ./ember
+
+# Run diagnostics
+./ember doctor
 ```
 
 ## License
