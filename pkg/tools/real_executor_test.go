@@ -22,6 +22,67 @@ func TestRealToolExecutor_ReadFileRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRealToolExecutor_ReadFileRejectsOutsideWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+
+	// A secret file living entirely outside the workspace root.
+	outsideDir := t.TempDir()
+	outsidePath := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(outsidePath, []byte("outside-secret"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	// A legitimate in-workspace file.
+	insidePath := filepath.Join(workspace, "inside.txt")
+	if err := os.WriteFile(insidePath, []byte("inside-ok"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	exec := NewRealToolExecutor(workspace)
+
+	tests := []struct {
+		name      string
+		path      string
+		wantError bool
+		wantBody  string
+	}{
+		{
+			name:      "absolute outside path rejected",
+			path:      outsidePath,
+			wantError: true,
+		},
+		{
+			name:      "traversal-shaped outside path rejected",
+			path:      filepath.Join(workspace, "..", filepath.Base(outsideDir), "secret.txt"),
+			wantError: true,
+		},
+		{
+			name:      "in-workspace read succeeds",
+			path:      insidePath,
+			wantError: false,
+			wantBody:  "inside-ok",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := exec.Execute("read_file", tt.path)
+			if tt.wantError {
+				if !strings.Contains(got, "[read_file error]") || !strings.Contains(got, "outside workspace") {
+					t.Errorf("expected outside-workspace rejection, got %q", got)
+				}
+				if strings.Contains(got, "outside-secret") {
+					t.Errorf("read_file leaked outside file contents: %q", got)
+				}
+				return
+			}
+			if got != tt.wantBody {
+				t.Errorf("expected %q, got %q", tt.wantBody, got)
+			}
+		})
+	}
+}
+
 func TestRealToolExecutor_WriteFileCreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "out.txt")

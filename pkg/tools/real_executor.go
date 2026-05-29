@@ -36,15 +36,51 @@ func (e *RealToolExecutor) Execute(toolName string, input string) string {
 	}
 }
 
+// resolveWithinWorkspace absolutizes path and verifies it stays within the
+// configured workspace root (an empty root falls back to the current working
+// directory). It returns the cleaned absolute path, or an error whose message
+// matches the boundary error shared by read_file and write_file. Comparison is
+// done on cleaned path boundaries to avoid prefix false positives such as
+// "/ws" matching "/ws-other".
+func (e *RealToolExecutor) resolveWithinWorkspace(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("abs path: %w", err)
+	}
+
+	root := e.workspaceRoot
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("getwd: %w", err)
+		}
+		root = cwd
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("abs root: %w", err)
+	}
+
+	if !strings.HasPrefix(absPath, absRoot+string(filepath.Separator)) && absPath != absRoot {
+		return "", fmt.Errorf("path %q is outside workspace %q", absPath, absRoot)
+	}
+	return absPath, nil
+}
+
 func (e *RealToolExecutor) readFile(path string) string {
-	info, err := os.Stat(path)
+	absPath, err := e.resolveWithinWorkspace(path)
+	if err != nil {
+		return fmt.Sprintf("[read_file error] %s", err.Error())
+	}
+
+	info, err := os.Stat(absPath)
 	if err != nil {
 		return fmt.Sprintf("[read_file error] stat: %s", err.Error())
 	}
 	if info.Size() > maxReadFileBytes {
 		return fmt.Sprintf("[read_file error] file too large: %d bytes (max %d)", info.Size(), maxReadFileBytes)
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return fmt.Sprintf("[read_file error] read: %s", err.Error())
 	}
@@ -59,26 +95,9 @@ func (e *RealToolExecutor) writeFile(input string) string {
 	}
 	path, content := sep[0], sep[1]
 
-	absPath, err := filepath.Abs(path)
+	absPath, err := e.resolveWithinWorkspace(path)
 	if err != nil {
-		return fmt.Sprintf("[write_file error] abs path: %s", err.Error())
-	}
-
-	root := e.workspaceRoot
-	if root == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return fmt.Sprintf("[write_file error] getwd: %s", err.Error())
-		}
-		root = cwd
-	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return fmt.Sprintf("[write_file error] abs root: %s", err.Error())
-	}
-
-	if !strings.HasPrefix(absPath, absRoot+string(filepath.Separator)) && absPath != absRoot {
-		return fmt.Sprintf("[write_file error] path %q is outside workspace %q", absPath, absRoot)
+		return fmt.Sprintf("[write_file error] %s", err.Error())
 	}
 
 	if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
