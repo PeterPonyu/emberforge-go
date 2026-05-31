@@ -4,17 +4,24 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
-const parityFixturePath = "/home/zeyufu/Desktop/emberforge-translations/parity_fixtures/scenario_001_session_lifecycle.jsonl"
+func parityFixturePath() string {
+	if path := os.Getenv("EMBERFORGE_PARITY_FIXTURE"); path != "" {
+		return path
+	}
+	return filepath.Join("testdata", "scenario_001_session_lifecycle.jsonl")
+}
 
 func TestParityReplay_ScenarioSessionLifecycle(t *testing.T) {
-	if _, err := os.Stat(parityFixturePath); err != nil {
-		t.Skipf("parity fixture not present at %s: %v", parityFixturePath, err)
+	path := parityFixturePath()
+	if _, err := os.Stat(path); err != nil {
+		t.Skipf("parity fixture not present at %s: %v", path, err)
 	}
 
-	f, err := os.Open(parityFixturePath)
+	f, err := os.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
