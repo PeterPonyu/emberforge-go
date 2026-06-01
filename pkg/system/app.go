@@ -63,8 +63,26 @@ func buildTelemetrySink(config StarterSystemConfig, sessionID string) telemetry.
 	return sink
 }
 
+// resolveProvider selects the api.Provider for the configured model using the
+// env/.ember credential precedence. Resolution failures (e.g. a hosted model
+// with no credentials) degrade gracefully to the Ollama default so the
+// application never aborts on provider setup.
+func resolveProvider(config StarterSystemConfig) api.Provider {
+	settings, err := api.LoadEmberSettings("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "provider: ignoring unreadable .ember settings: %v\n", err)
+		settings = api.EmberSettings{}
+	}
+	provider, err := api.NewProviderForModel(config.Model, settings)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "provider: falling back to ollama: %v\n", err)
+		return api.NewOllamaProvider("", config.Model)
+	}
+	return provider
+}
+
 func NewStarterSystemApplication(config StarterSystemConfig) *StarterSystemApplication {
-	provider := api.NewOllamaProvider("", "")
+	provider := resolveProvider(config)
 	toolExecutor := tools.NewRealToolExecutor("")
 	sessionID := newSessionID()
 	telemetrySink := buildTelemetrySink(config, sessionID)
