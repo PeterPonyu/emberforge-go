@@ -1,6 +1,10 @@
 package system
 
 import (
+	"fmt"
+	"os"
+	"time"
+
 	"github.com/PeterPonyu/emberforge-go/pkg/api"
 	"github.com/PeterPonyu/emberforge-go/pkg/commands"
 	"github.com/PeterPonyu/emberforge-go/pkg/compat"
@@ -14,9 +18,10 @@ import (
 
 type StarterSystemApplication struct {
 	Config            StarterSystemConfig
+	SessionID         string
 	Provider          api.Provider
 	ToolExecutor      tools.ToolExecutor
-	Telemetry         telemetry.ConsoleTelemetrySink
+	Telemetry         telemetry.TelemetrySink
 	Runtime           *runtime.ConversationRuntime
 	Plugin            plugins.ExamplePlugin
 	PluginRegistry    plugins.PluginRegistry
@@ -33,10 +38,36 @@ type StarterSystemApplication struct {
 	Turn              *TurnEngine
 }
 
+// newSessionID derives a process-and-time based session identifier used to
+// name telemetry logs and stamp telemetry records.
+func newSessionID() string {
+	return fmt.Sprintf("session-%d-%d", time.Now().UnixNano(), os.Getpid())
+}
+
+// buildTelemetrySink selects the telemetry sink for the configured mode. JSONL
+// selection that fails to open its log file degrades gracefully to the console
+// sink so the application never aborts on telemetry setup.
+func buildTelemetrySink(config StarterSystemConfig, sessionID string) telemetry.TelemetrySink {
+	if config.TelemetryMode != TelemetryModeJSONL {
+		return telemetry.ConsoleTelemetrySink{}
+	}
+	path := config.TelemetryPath
+	if path == "" {
+		path = telemetry.DefaultJsonlPath(sessionID)
+	}
+	sink, err := telemetry.NewJsonlTelemetrySink(sessionID, path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "telemetry: falling back to console sink: %v\n", err)
+		return telemetry.ConsoleTelemetrySink{}
+	}
+	return sink
+}
+
 func NewStarterSystemApplication(config StarterSystemConfig) *StarterSystemApplication {
 	provider := api.NewOllamaProvider("", "")
 	toolExecutor := tools.NewRealToolExecutor("")
-	telemetrySink := telemetry.ConsoleTelemetrySink{}
+	sessionID := newSessionID()
+	telemetrySink := buildTelemetrySink(config, sessionID)
 	plugin := plugins.NewExamplePlugin()
 	buddy := NewStarterBuddyState("")
 	taskQuestionStore := NewTaskQuestionStateStore("")
@@ -49,6 +80,7 @@ func NewStarterSystemApplication(config StarterSystemConfig) *StarterSystemAppli
 	turn := NewTurnEngine(sequence, TurnBudget{MaxTurns: config.MaxTurns, MaxCostUSD: config.MaxCostUSD})
 	return &StarterSystemApplication{
 		Config:            config,
+		SessionID:         sessionID,
 		Provider:          provider,
 		ToolExecutor:      toolExecutor,
 		Telemetry:         telemetrySink,
@@ -80,6 +112,9 @@ func (app *StarterSystemApplication) RunDemo() []string {
 
 func (app *StarterSystemApplication) Shutdown() {
 	app.Sequence.Shutdown()
+	if closer, ok := app.Telemetry.(interface{ Close() error }); ok {
+		_ = closer.Close()
+	}
 }
 
 func (app *StarterSystemApplication) Report() StarterSystemReport {

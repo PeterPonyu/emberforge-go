@@ -7,6 +7,43 @@ import (
 	"testing"
 )
 
+func TestExecuteStarterSlashCommandTable(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		wantOK   bool
+		contains []string
+	}{
+		{name: "help", input: "/help", wantOK: true, contains: []string{"available commands:", "/init"}},
+		{name: "status", input: "/status", wantOK: true, contains: []string{"[command] status:", "lifecycle="}},
+		{name: "doctor", input: "/doctor", wantOK: true, contains: []string{"emberforge-go doctor"}},
+		{name: "model_list", input: "/model list", wantOK: true, contains: []string{"[command] model list:"}},
+		{name: "compact", input: "/compact", wantOK: true, contains: []string{"[command] compact:"}},
+		{name: "review", input: "/review api", wantOK: true, contains: []string{"[command] review", "scope: api"}},
+		{name: "commit", input: "/commit ship it", wantOK: true, contains: []string{"[command] commit", "summary: ship it"}},
+		{name: "pr", input: "/pr notes", wantOK: true, contains: []string{"[command] pr", "context: notes"}},
+		{name: "unknown", input: "/nope", wantOK: false},
+		{name: "not_slash", input: "hello", wantOK: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := NewStarterSystemApplication(DefaultStarterSystemConfig())
+			defer app.Shutdown()
+
+			output, ok := ExecuteStarterSlashCommand(app, tc.input)
+			if ok != tc.wantOK {
+				t.Fatalf("expected ok=%t for %q, got %t (output=%q)", tc.wantOK, tc.input, ok, output)
+			}
+			for _, want := range tc.contains {
+				if !strings.Contains(output, want) {
+					t.Fatalf("expected output for %q to contain %q, got:\n%s", tc.input, want, output)
+				}
+			}
+		})
+	}
+}
+
 func TestExecuteStarterSlashCommandHelp(t *testing.T) {
 	app := NewStarterSystemApplication(DefaultStarterSystemConfig())
 	defer app.Shutdown()
@@ -30,6 +67,99 @@ func TestExecuteStarterSlashCommandHelp(t *testing.T) {
 	if !strings.Contains(output, "/pr [context]") {
 		t.Fatalf("expected help to include pr hint, got:\n%s", output)
 	}
+}
+
+func TestExecuteStarterSlashCommandHelpListsInit(t *testing.T) {
+	app := NewStarterSystemApplication(DefaultStarterSystemConfig())
+	defer app.Shutdown()
+
+	output, ok := ExecuteStarterSlashCommand(app, "/help")
+	if !ok {
+		t.Fatal("expected /help to be handled")
+	}
+	if !strings.Contains(output, "/init [path] -- Scaffold EMBER.md, .ember.json, and .gitignore entries") {
+		t.Fatalf("expected help to include init hint, got:\n%s", output)
+	}
+}
+
+func TestExecuteStarterSlashCommandInit(t *testing.T) {
+	root := t.TempDir()
+
+	output, ok := dispatchInTempApp(t, "/init "+root)
+	if !ok {
+		t.Fatal("expected /init to be handled")
+	}
+
+	for _, expected := range []string{
+		"Init",
+		"Project          " + root,
+		".ember/          created",
+		".ember.json      created",
+		".gitignore       created",
+		"EMBER.md         created",
+		"Next step        Review and tailor the generated guidance",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("expected init output to contain %q, got:\n%s", expected, output)
+		}
+	}
+
+	if !isDir(filepath.Join(root, ".ember")) {
+		t.Fatalf("expected .ember directory to be created")
+	}
+	emberJSON, err := os.ReadFile(filepath.Join(root, ".ember.json"))
+	if err != nil {
+		t.Fatalf("read .ember.json: %v", err)
+	}
+	if string(emberJSON) != starterEmberJSON {
+		t.Fatalf("unexpected .ember.json contents:\n%s", emberJSON)
+	}
+	gitignore, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	for _, entry := range gitignoreEntries {
+		if !strings.Contains(string(gitignore), entry) {
+			t.Fatalf("expected .gitignore to contain %q, got:\n%s", entry, gitignore)
+		}
+	}
+}
+
+func TestExecuteStarterSlashCommandInitIsIdempotent(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "EMBER.md"), []byte("custom guidance\n"), 0o644); err != nil {
+		t.Fatalf("seed EMBER.md: %v", err)
+	}
+
+	first, ok := dispatchInTempApp(t, "/init "+root)
+	if !ok {
+		t.Fatal("expected /init to be handled")
+	}
+	if !strings.Contains(first, "EMBER.md         skipped (already exists)") {
+		t.Fatalf("expected EMBER.md to be skipped, got:\n%s", first)
+	}
+
+	second, _ := dispatchInTempApp(t, "/init "+root)
+	for _, name := range []string{".ember/", ".ember.json", ".gitignore", "EMBER.md"} {
+		if !strings.Contains(second, name) || !strings.Contains(second, "skipped (already exists)") {
+			t.Fatalf("expected second init to skip %q, got:\n%s", name, second)
+		}
+	}
+
+	preserved, err := os.ReadFile(filepath.Join(root, "EMBER.md"))
+	if err != nil {
+		t.Fatalf("read EMBER.md: %v", err)
+	}
+	if string(preserved) != "custom guidance\n" {
+		t.Fatalf("expected existing EMBER.md to be preserved, got:\n%s", preserved)
+	}
+}
+
+func dispatchInTempApp(t *testing.T, command string) (string, bool) {
+	t.Helper()
+	app := NewStarterSystemApplication(DefaultStarterSystemConfig())
+	t.Cleanup(app.Shutdown)
+	return ExecuteStarterSlashCommand(app, command)
 }
 
 func TestExecuteStarterSlashCommandDoctor(t *testing.T) {

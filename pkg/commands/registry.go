@@ -9,6 +9,7 @@ var defaultCommands = []CommandSpec{
 	{Name: "status", Description: "Report runtime status", Category: CommandCategoryCore},
 	{Name: "doctor", Description: "Run translated environment diagnostics", Category: CommandCategoryCore, ArgumentHint: "[quick|status]"},
 	{Name: "model", Description: "Switch or inspect the active model", Category: CommandCategoryCore, ArgumentHint: "[model|list]"},
+	{Name: "init", Description: "Scaffold EMBER.md, .ember.json, and .gitignore entries", Category: CommandCategoryWorkspace, ArgumentHint: "[path]"},
 	{Name: "questions", Description: "Inspect and answer task-linked questions", Category: CommandCategorySession, ArgumentHint: "[ask <task-id> <text>|pending|answer <question-id> <text>]"},
 	{Name: "tasks", Description: "Create and inspect translated background tasks", Category: CommandCategoryAutomation, ArgumentHint: "[create prompt <text>|list|show <task-id>|stop <task-id>]"},
 	{Name: "buddy", Description: "Manage the translated companion buddy", Category: CommandCategoryCore, ArgumentHint: "[hatch|rehatch|pet|mute|unmute]"},
