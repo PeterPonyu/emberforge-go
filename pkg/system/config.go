@@ -19,6 +19,9 @@ type StarterSystemConfig struct {
 	ToolDemoCommand string
 	MaxTurns        int
 	MaxCostUSD      float64
+	// Model selects the model/alias the provider-detection layer routes on.
+	// Empty falls back to the Ollama default model.
+	Model string
 	// TelemetryMode selects the telemetry sink. Defaults to console.
 	TelemetryMode TelemetryMode
 	// TelemetryPath overrides the JSONL log path when TelemetryMode is JSONL.

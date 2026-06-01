@@ -1,11 +1,13 @@
 package tools
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -29,11 +31,41 @@ func (e *RealToolExecutor) Execute(toolName string, input string) string {
 		return e.readFile(input)
 	case "write_file":
 		return e.writeFile(input)
+	case "edit_file":
+		return e.editFile(input)
+	case "glob_search":
+		return e.globSearch(input)
+	case "grep_search":
+		return e.grepSearch(input)
 	case "bash":
 		return e.bash(input)
+	case "web", "notebook", "agent", "skill":
+		// These tools are structurally defined and permission-gated in the
+		// registry; their full execution is deferred. Return a structured
+		// receipt so the dispatch path is observable end-to-end.
+		return fmt.Sprintf("[%s] not yet executable in go runtime; input=%s", toolName, input)
 	default:
 		return fmt.Sprintf("[real tool] unknown tool: %s", toolName)
 	}
+}
+
+// ExecuteWithPermission gates Execute behind the registry-declared permission
+// for toolName: the tool only runs when activeMode satisfies the tool's
+// required permission, mirroring the Rust mode-based permission check. Unknown
+// tools are reported without running. The boolean reports whether the tool was
+// permitted to run.
+func (e *RealToolExecutor) ExecuteWithPermission(registry ToolRegistry, toolName, input string, activeMode PermissionMode) (string, bool) {
+	spec, ok := registry.Find(toolName)
+	if !ok {
+		return fmt.Sprintf("[permission error] unknown tool: %s", toolName), false
+	}
+	if !activeMode.Allows(spec.RequiredPermission) {
+		return fmt.Sprintf(
+			"[permission denied] tool %q requires %s; current mode is %s",
+			toolName, spec.RequiredPermission, activeMode,
+		), false
+	}
+	return e.Execute(toolName, input), true
 }
 
 // resolveWithinWorkspace absolutizes path and verifies it stays within the
@@ -161,6 +193,134 @@ func (e *RealToolExecutor) writeFile(input string) string {
 		return fmt.Sprintf("[write_file error] write: %s", err.Error())
 	}
 	return fmt.Sprintf("[write_file] wrote %d bytes to %s", len(content), absPath)
+}
+
+// editFile performs an exact string replacement in a workspace file. Input
+// format: "path\x00old\x00new" (NUL-separated) to allow arbitrary content;
+// the old string must be present, else an error is returned.
+func (e *RealToolExecutor) editFile(input string) string {
+	parts := strings.SplitN(input, "\x00", 3)
+	if len(parts) != 3 {
+		return "[edit_file error] input must be 'path\\x00old_string\\x00new_string'"
+	}
+	path, oldString, newString := parts[0], parts[1], parts[2]
+
+	absPath, err := e.resolveWithinWorkspace(path)
+	if err != nil {
+		return fmt.Sprintf("[edit_file error] %s", err.Error())
+	}
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return fmt.Sprintf("[edit_file error] read: %s", err.Error())
+	}
+	content := string(data)
+	if !strings.Contains(content, oldString) {
+		return "[edit_file error] old_string not found in file"
+	}
+	updated := strings.Replace(content, oldString, newString, 1)
+	if err := os.WriteFile(absPath, []byte(updated), 0644); err != nil {
+		return fmt.Sprintf("[edit_file error] write: %s", err.Error())
+	}
+	return fmt.Sprintf("[edit_file] updated %s", absPath)
+}
+
+// workspaceRootDir returns the configured workspace root as an absolute path,
+// falling back to the current working directory when no root is set. Unlike
+// resolveWithinWorkspace it interprets relative subpaths against the root
+// rather than the process cwd, which is what the directory-walking tools need.
+func (e *RealToolExecutor) workspaceRootDir(sub string) (string, error) {
+	root := e.workspaceRoot
+	if root == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("getwd: %w", err)
+		}
+		root = cwd
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("abs root: %w", err)
+	}
+	if sub == "" || sub == "." {
+		return absRoot, nil
+	}
+	joined := filepath.Clean(filepath.Join(absRoot, sub))
+	if !withinRoot(joined, absRoot) {
+		return "", fmt.Errorf("path %q is outside workspace %q", joined, absRoot)
+	}
+	return joined, nil
+}
+
+// globSearch lists workspace files matching a shell glob pattern. The pattern
+// is resolved relative to the workspace root and results are confined to it.
+func (e *RealToolExecutor) globSearch(pattern string) string {
+	root, err := e.workspaceRootDir(".")
+	if err != nil {
+		return fmt.Sprintf("[glob_search error] %s", err.Error())
+	}
+	matches, err := filepath.Glob(filepath.Join(root, pattern))
+	if err != nil {
+		return fmt.Sprintf("[glob_search error] %s", err.Error())
+	}
+	var kept []string
+	for _, m := range matches {
+		if withinRoot(filepath.Clean(m), root) {
+			kept = append(kept, m)
+		}
+	}
+	if len(kept) == 0 {
+		return "[glob_search] no matches"
+	}
+	return strings.Join(kept, "\n")
+}
+
+// grepSearch walks the workspace and returns "path:lineno:line" for every line
+// matching the regex pattern. Input format: "pattern" or "pattern\x00subdir".
+func (e *RealToolExecutor) grepSearch(input string) string {
+	pattern := input
+	sub := "."
+	if parts := strings.SplitN(input, "\x00", 2); len(parts) == 2 {
+		pattern, sub = parts[0], parts[1]
+	}
+
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return fmt.Sprintf("[grep_search error] invalid pattern: %s", err.Error())
+	}
+	root, err := e.workspaceRootDir(sub)
+	if err != nil {
+		return fmt.Sprintf("[grep_search error] %s", err.Error())
+	}
+
+	var results []string
+	walkErr := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return nil
+		}
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		scanner.Buffer(make([]byte, 256*1024), 256*1024)
+		lineNo := 0
+		for scanner.Scan() {
+			lineNo++
+			line := scanner.Text()
+			if re.MatchString(line) {
+				results = append(results, fmt.Sprintf("%s:%d:%s", path, lineNo, line))
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return fmt.Sprintf("[grep_search error] %s", walkErr.Error())
+	}
+	if len(results) == 0 {
+		return "[grep_search] no matches"
+	}
+	return strings.Join(results, "\n")
 }
 
 func (e *RealToolExecutor) bash(command string) string {
