@@ -4,7 +4,7 @@
 
 Emberforge is a terminal coding tool that works with local models through Ollama and can use hosted providers when configured. It includes tool execution, session management, plugins, and multiple provider backends. This repository contains the Go implementation.
 
-> **Note:** The Go port is a work in progress. The interactive REPL and one-shot `prompt` command from the Rust reference are not yet wired up in the Go CLI. Today the binary supports `doctor`, slash commands, an HTTP/SSE server (`--serve`), and a default demo run (see [Quick Start](#quick-start)).
+> **Note:** The Go port is a work in progress. The interactive REPL (`repl`, or the default when launched from a terminal) and the `init` scaffolder are now wired up; the one-shot `prompt` command from the Rust reference is still pending. The binary supports `repl`, `init`, `doctor`, slash commands, an HTTP/SSE server (`--serve`), and a non-interactive demo run (see [Quick Start](#quick-start)).
 
 ## Quick Start
 
@@ -22,18 +22,26 @@ go build -o ember ./cmd/ember
 # Start the HTTP/SSE server
 ./ember --serve :8080
 
-# Run the demo flow (default when no command is given)
+# Drop into the interactive REPL (also the default when stdin is a terminal)
+./ember repl
+
+# Scaffold project files (EMBER.md, .ember.json, .gitignore entries)
+./ember init
+
+# Append structured telemetry to $EMBER_CONFIG_HOME/telemetry/<session>.jsonl
+./ember --telemetry jsonl repl
+
+# Run the demo flow (used when no command is given and stdin is not a terminal)
 ./ember
 
 # Select a model for the Ollama provider (applies to the runs above)
 ./ember --model qwen3:8b
 ```
 
-> The interactive REPL (`./ember` dropping into a prompt loop) and the one-shot
-> `./ember prompt "..."` command are documented in the Rust reference but are
-> **not yet implemented in the Go port**. Running `./ember` with no command
-> currently executes the demo flow rather than starting a REPL. These are
-> planned features; see issue #9 for tracking.
+> Running `./ember` with no command drops into the interactive REPL when stdin
+> is a terminal, and otherwise runs the non-interactive demo flow. The one-shot
+> `./ember prompt "..."` command from the Rust reference is still planned; see
+> issue #9 for tracking.
 
 ## Features
 

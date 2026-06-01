@@ -102,6 +102,22 @@ func executeTasksCommand(app *StarterSystemApplication, payload string) string {
 	}
 }
 
+func executeInitCommand(payload string) string {
+	cwd := strings.TrimSpace(payload)
+	if cwd == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return fmt.Sprintf("[command] init: resolve working directory: %s", err.Error())
+		}
+		cwd = wd
+	}
+	report, err := InitializeRepo(cwd)
+	if err != nil {
+		return fmt.Sprintf("[command] init: %s", err.Error())
+	}
+	return report.Render()
+}
+
 func executeQuestionsCommand(app *StarterSystemApplication, payload string) string {
 	parts := strings.Fields(strings.TrimSpace(payload))
 	action := "pending"
@@ -204,6 +220,8 @@ func ExecuteStarterSlashCommand(app *StarterSystemApplication, input string) (st
 			payload = activeModel
 		}
 		return fmt.Sprintf("[command] model: %s", payload), true
+	case "init":
+		return executeInitCommand(payload), true
 	case "questions":
 		return executeQuestionsCommand(app, payload), true
 	case "tasks":

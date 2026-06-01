@@ -16,6 +16,7 @@ import (
 func main() {
 	serveAddr := flag.String("serve", "", "address to listen on for HTTP/SSE server (e.g. :8080); if empty, run demo mode")
 	model := flag.String("model", "", "model to use with the Ollama provider")
+	telemetryMode := flag.String("telemetry", "console", "telemetry sink: console or jsonl (jsonl appends to $EMBER_CONFIG_HOME/telemetry/<session>.jsonl)")
 	flag.Parse()
 
 	if strings.TrimSpace(*model) != "" {
@@ -23,16 +24,40 @@ func main() {
 		os.Setenv("EMBER_MODEL", strings.TrimSpace(*model))
 	}
 
+	config := system.DefaultStarterSystemConfig()
+	if strings.EqualFold(strings.TrimSpace(*telemetryMode), string(system.TelemetryModeJSONL)) {
+		config.TelemetryMode = system.TelemetryModeJSONL
+	}
+
 	if flag.Arg(0) == "doctor" {
-		app := system.NewStarterSystemApplication(system.DefaultStarterSystemConfig())
+		app := system.NewStarterSystemApplication(config)
 		fmt.Println(system.BuildDoctorReport(app.Report()))
+		app.Shutdown()
+		return
+	}
+
+	if flag.Arg(0) == "init" {
+		app := system.NewStarterSystemApplication(config)
+		output, _ := system.ExecuteStarterSlashCommand(app, "/init "+strings.Join(flag.Args()[1:], " "))
+		fmt.Println(output)
+		app.Shutdown()
+		return
+	}
+
+	if flag.Arg(0) == "repl" {
+		app := system.NewStarterSystemApplication(config)
+		if err := system.RunStarterRepl(app, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "repl error: %v\n", err)
+			app.Shutdown()
+			os.Exit(1)
+		}
 		app.Shutdown()
 		return
 	}
 
 	rawCommand := strings.TrimSpace(strings.Join(flag.Args(), " "))
 	if strings.HasPrefix(rawCommand, "/") {
-		app := system.NewStarterSystemApplication(system.DefaultStarterSystemConfig())
+		app := system.NewStarterSystemApplication(config)
 		if output, ok := system.ExecuteStarterSlashCommand(app, rawCommand); ok {
 			fmt.Println(output)
 			app.Shutdown()
@@ -56,8 +81,20 @@ func main() {
 		return
 	}
 
-	// Default: demo mode (original behaviour).
-	app := system.NewStarterSystemApplication(system.DefaultStarterSystemConfig())
+	// Default: drop into the interactive REPL when stdin is a terminal,
+	// otherwise fall back to the non-interactive demo flow.
+	if isInteractiveStdin() {
+		app := system.NewStarterSystemApplication(config)
+		if err := system.RunStarterRepl(app, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "repl error: %v\n", err)
+			app.Shutdown()
+			os.Exit(1)
+		}
+		app.Shutdown()
+		return
+	}
+
+	app := system.NewStarterSystemApplication(config)
 	outputs := app.RunDemo()
 	app.Shutdown()
 	report := app.Report()
@@ -80,4 +117,14 @@ func main() {
 	fmt.Printf("last route: %s\n", report.LastRoute)
 	fmt.Printf("last phases: %v\n", report.LastPhaseHistory)
 	fmt.Printf("last turn: %s\n", report.LastTurnInput)
+}
+
+// isInteractiveStdin reports whether stdin is a character device (a terminal),
+// indicating the user can type into an interactive REPL.
+func isInteractiveStdin() bool {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }

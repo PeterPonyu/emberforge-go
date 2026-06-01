@@ -1,5 +1,16 @@
 package system
 
+// TelemetryMode selects how the application records telemetry events.
+type TelemetryMode string
+
+const (
+	// TelemetryModeConsole prints events to stdout (the original behaviour).
+	TelemetryModeConsole TelemetryMode = "console"
+	// TelemetryModeJSONL appends structured events to a JSONL log under
+	// $EMBER_CONFIG_HOME/telemetry/<session>.jsonl.
+	TelemetryModeJSONL TelemetryMode = "jsonl"
+)
+
 type StarterSystemConfig struct {
 	AppName         string
 	Port            int
@@ -8,6 +19,12 @@ type StarterSystemConfig struct {
 	ToolDemoCommand string
 	MaxTurns        int
 	MaxCostUSD      float64
+	// TelemetryMode selects the telemetry sink. Defaults to console.
+	TelemetryMode TelemetryMode
+	// TelemetryPath overrides the JSONL log path when TelemetryMode is JSONL.
+	// When empty, the default $EMBER_CONFIG_HOME/telemetry/<session>.jsonl
+	// location is used.
+	TelemetryPath string
 }
 
 func DefaultStarterSystemConfig() StarterSystemConfig {
@@ -19,5 +36,6 @@ func DefaultStarterSystemConfig() StarterSystemConfig {
 		ToolDemoCommand: "printf hello",
 		MaxTurns:        16,
 		MaxCostUSD:      1.0,
+		TelemetryMode:   TelemetryModeConsole,
 	}
 }
