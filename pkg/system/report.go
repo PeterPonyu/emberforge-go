@@ -7,7 +7,7 @@ type StarterSystemReport struct {
 	PluginCount       int
 	ServerDescription string
 	LSPSummary        string
-	RustAnchor        string
+	RuntimeAnchor     string
 	TurnCount         int
 	HandledRequestCount int
 	LifecycleState    string

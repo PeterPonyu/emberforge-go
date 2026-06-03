@@ -109,7 +109,7 @@ func main() {
 	fmt.Printf("plugin valid: %t\n", app.Plugin.Validate())
 	fmt.Println(report.ServerDescription)
 	fmt.Println(report.LSPSummary)
-	fmt.Printf("rust anchor: %s\n", report.RustAnchor)
+	fmt.Printf("runtime: %s\n", report.RuntimeAnchor)
 	fmt.Printf("turns: %d\n", report.TurnCount)
 	for _, output := range outputs {
 		fmt.Println(output)

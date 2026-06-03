@@ -155,7 +155,7 @@ func (app *StarterSystemApplication) Report() StarterSystemReport {
 		PluginCount:         len(app.PluginRegistry.List()),
 		ServerDescription:   app.Server.Describe(),
 		LSPSummary:          app.LSP.Summary(),
-		RustAnchor:          app.Paths.EmberRuntimeLib,
+		RuntimeAnchor:       app.Paths.EmberRuntimeLib,
 		TurnCount:           app.Runtime.TurnCount(),
 		HandledRequestCount: len(app.Sequence.RecordsLog),
 		LifecycleState:      string(app.Sequence.Lifecycle.Current()),

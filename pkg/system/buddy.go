@@ -216,7 +216,7 @@ func ExecuteBuddyCommand(state *StarterBuddyState, payload string) string {
 		return renderBuddyCompanion(
 			"[command] buddy hatch",
 			companion,
-			"note: starter buddy translation from claude-code-src",
+			"note: starter companion seeded from Emberforge defaults",
 		)
 	case "rehatch":
 		return renderBuddyCompanion(

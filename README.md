@@ -9,7 +9,10 @@ Emberforge is a terminal coding tool that works with local models through Ollama
 ## Quick Start
 
 ```bash
-# Build from source
+# Install with the Go toolchain (puts the `ember` binary on your PATH)
+go install github.com/PeterPonyu/emberforge-go/cmd/ember@latest
+
+# ...or build from source (produces a local ./ember binary)
 go build -o ember ./cmd/ember
 
 # Run diagnostics
@@ -84,11 +87,16 @@ pkg/
 
 ## Configuration
 
-Emberforge reads configuration from (in order of priority):
+Credential settings are read from `.ember/settings.json` in the current
+working directory (the `anthropicApiKey` and `xaiApiKey` fields are consulted
+as a fallback when the matching environment variables are unset). The `init`
+command scaffolds a project `.ember.json` alongside `EMBER.md` and `.gitignore`
+entries.
 
-1. `.ember.json` (project config)
-2. `.ember/settings.json` (project settings)
-3. `~/.ember/settings.json` (user settings)
+User-level settings (e.g. a `~/.emberforge/settings.json`) are not yet
+supported: the binary reads no settings file from your home directory. The
+`~/.emberforge/` directory is used only for state and telemetry (buddy state,
+task-question state, and telemetry logs).
 
 Environment variables:
 
@@ -112,6 +120,21 @@ go test ./...
 # Run diagnostics
 ./ember doctor
 ```
+
+### Parity replay test fixture
+
+The parity replay test (`pkg/server/parity_replay_test.go`) exercises a recorded
+session-lifecycle scenario. It looks for a fixture at
+`pkg/server/testdata/scenario_001_session_lifecycle.jsonl`, or at the path given
+by the `EMBERFORGE_PARITY_FIXTURE` environment variable:
+
+```bash
+# Point the parity replay test at a custom fixture path
+EMBERFORGE_PARITY_FIXTURE=/path/to/scenario.jsonl go test ./pkg/server/...
+```
+
+When no fixture is present at either location, the test skips gracefully, so a
+plain `go test ./...` run will not fail on a missing fixture.
 
 ## License
 
