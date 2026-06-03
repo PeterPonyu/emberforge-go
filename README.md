@@ -9,7 +9,10 @@ Emberforge is a terminal coding tool that works with local models through Ollama
 ## Quick Start
 
 ```bash
-# Build from source
+# Install with the Go toolchain (puts the `ember` binary on your PATH)
+go install github.com/PeterPonyu/emberforge-go/cmd/ember@latest
+
+# ...or build from source (produces a local ./ember binary)
 go build -o ember ./cmd/ember
 
 # Run diagnostics
@@ -117,6 +120,21 @@ go test ./...
 # Run diagnostics
 ./ember doctor
 ```
+
+### Parity replay test fixture
+
+The parity replay test (`pkg/server/parity_replay_test.go`) exercises a recorded
+session-lifecycle scenario. It looks for a fixture at
+`pkg/server/testdata/scenario_001_session_lifecycle.jsonl`, or at the path given
+by the `EMBERFORGE_PARITY_FIXTURE` environment variable:
+
+```bash
+# Point the parity replay test at a custom fixture path
+EMBERFORGE_PARITY_FIXTURE=/path/to/scenario.jsonl go test ./pkg/server/...
+```
+
+When no fixture is present at either location, the test skips gracefully, so a
+plain `go test ./...` run will not fail on a missing fixture.
 
 ## License
 
