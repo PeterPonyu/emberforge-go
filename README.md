@@ -88,7 +88,7 @@ Emberforge reads configuration from (in order of priority):
 
 1. `.ember.json` (project config)
 2. `.ember/settings.json` (project settings)
-3. `~/.ember/settings.json` (user settings)
+3. `~/.emberforge/settings.json` (user settings)
 
 Environment variables:
 
