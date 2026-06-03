@@ -84,11 +84,16 @@ pkg/
 
 ## Configuration
 
-Emberforge reads configuration from (in order of priority):
+Credential settings are read from `.ember/settings.json` in the current
+working directory (the `anthropicApiKey` and `xaiApiKey` fields are consulted
+as a fallback when the matching environment variables are unset). The `init`
+command scaffolds a project `.ember.json` alongside `EMBER.md` and `.gitignore`
+entries.
 
-1. `.ember.json` (project config)
-2. `.ember/settings.json` (project settings)
-3. `~/.emberforge/settings.json` (user settings)
+User-level settings (e.g. a `~/.emberforge/settings.json`) are not yet
+supported: the binary reads no settings file from your home directory. The
+`~/.emberforge/` directory is used only for state and telemetry (buddy state,
+task-question state, and telemetry logs).
 
 Environment variables:
 
