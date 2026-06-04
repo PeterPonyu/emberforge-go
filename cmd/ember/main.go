@@ -36,6 +36,19 @@ func main() {
 		return
 	}
 
+	if flag.Arg(0) == "prompt" {
+		promptText := strings.TrimSpace(strings.Join(flag.Args()[1:], " "))
+		if promptText == "" {
+			fmt.Fprintln(os.Stderr, "usage: ember prompt \"<text>\"")
+			os.Exit(2)
+		}
+		app := system.NewStarterSystemApplication(config)
+		output := system.RunPromptOnce(app, promptText)
+		app.Shutdown()
+		fmt.Println(output)
+		return
+	}
+
 	if flag.Arg(0) == "init" {
 		app := system.NewStarterSystemApplication(config)
 		output, _ := system.ExecuteStarterSlashCommand(app, "/init "+strings.Join(flag.Args()[1:], " "))
