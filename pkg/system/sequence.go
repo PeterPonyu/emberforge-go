@@ -14,6 +14,10 @@ type SequenceRecord struct {
 	Route     DispatchRoute
 	Phases    []LifecycleState
 	Output    string
+	// Err carries the real error from the executed turn (e.g. a provider
+	// failure) so callers can react to genuine failures without parsing the
+	// rendered output. It is nil on success.
+	Err error
 }
 
 type ControlSequenceEngine struct {
@@ -67,10 +71,10 @@ func (e *ControlSequenceEngine) Handle(input string) SequenceRecord {
 	ctx.Route = string(decision.Route)
 
 	mark(LifecycleExecuting)
-	output := e.executeDecision(decision)
+	output, execErr := e.executeDecision(decision)
 
 	mark(LifecyclePersisting)
-	record := SequenceRecord{RequestID: ctx.RequestID, Input: ctx.Input, Route: decision.Route, Phases: phases, Output: output}
+	record := SequenceRecord{RequestID: ctx.RequestID, Input: ctx.Input, Route: decision.Route, Phases: phases, Output: output, Err: execErr}
 	e.RecordsLog = append(e.RecordsLog, record)
 	e.Telemetry.Record(telemetry.Event{Name: "sequence_persisted", Details: fmt.Sprintf("%s:%s", record.RequestID, record.Route)})
 
@@ -97,16 +101,16 @@ func (e *ControlSequenceEngine) LastRecord() (SequenceRecord, bool) {
 	return e.RecordsLog[len(e.RecordsLog)-1], true
 }
 
-func (e *ControlSequenceEngine) executeDecision(decision DispatchDecision) string {
+func (e *ControlSequenceEngine) executeDecision(decision DispatchDecision) (string, error) {
 	switch decision.Route {
 	case RouteCommand:
-		return e.renderCommandOutput(decision.CommandName)
+		return e.renderCommandOutput(decision.CommandName), nil
 	case RouteTool:
-		return e.Runtime.RunTurn("/tool " + decision.Payload)
+		return e.Runtime.RunTurnResult("/tool " + decision.Payload)
 	case RoutePrompt:
-		return e.Runtime.RunTurn(decision.Payload)
+		return e.Runtime.RunTurnResult(decision.Payload)
 	default:
-		return "[sequence] unreachable"
+		return "[sequence] unreachable", nil
 	}
 }
 
