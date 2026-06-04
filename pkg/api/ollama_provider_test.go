@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -128,6 +130,97 @@ func TestOllamaProvider_V1SuffixReachesChatEndpoint(t *testing.T) {
 	}
 	if resp.Text != "hi" {
 		t.Fatalf("got %q want %q", resp.Text, "hi")
+	}
+}
+
+// captureOllamaRequest spins up a stub /api/chat server, runs one SendMessage
+// against the supplied provider, and returns the decoded request body the
+// provider sent. It fails the test on any transport error.
+func captureOllamaRequest(t *testing.T, p *OllamaProvider, req MessageRequest) ollamaChatRequest {
+	t.Helper()
+	var captured ollamaChatRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"ok"},"done":true}`)
+	}))
+	defer srv.Close()
+
+	p.BaseURL = srv.URL
+	if _, err := p.SendMessage(req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return captured
+}
+
+// TestOllamaProvider_SendsModelAwareNumPredict asserts the request body carries
+// the model-aware default num_predict (mirroring the Rust reference) when no
+// explicit override is configured.
+func TestOllamaProvider_SendsModelAwareNumPredict(t *testing.T) {
+	p := NewOllamaProvider("http://placeholder", "qwen3:8b")
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "qwen3:8b", Prompt: "hi"})
+
+	if got.Options == nil {
+		t.Fatal("expected options to be present in request body, got nil")
+	}
+	if got.Options.NumPredict != defaultOllamaNumPredict {
+		t.Fatalf("num_predict = %d, want %d", got.Options.NumPredict, defaultOllamaNumPredict)
+	}
+}
+
+// TestOllamaProvider_OpusModelUsesTighterBound mirrors the reference's
+// opus-class branch of max_tokens_for_model.
+func TestOllamaProvider_OpusModelUsesTighterBound(t *testing.T) {
+	p := NewOllamaProvider("http://placeholder", "some-opus-tag")
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "some-opus-tag", Prompt: "hi"})
+
+	if got.Options == nil || got.Options.NumPredict != opusOllamaNumPredict {
+		t.Fatalf("num_predict = %v, want %d", got.Options, opusOllamaNumPredict)
+	}
+}
+
+// TestOllamaProvider_EnvOverridesNumPredict asserts OLLAMA_NUM_PREDICT takes
+// precedence over the model-aware default and is sent verbatim.
+func TestOllamaProvider_EnvOverridesNumPredict(t *testing.T) {
+	t.Setenv("OLLAMA_NUM_PREDICT", "2048")
+	p := NewOllamaProvider("http://placeholder", "qwen3:8b")
+	if p.NumPredict != 2048 {
+		t.Fatalf("provider NumPredict = %d, want 2048", p.NumPredict)
+	}
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "qwen3:8b", Prompt: "hi"})
+
+	if got.Options == nil || got.Options.NumPredict != 2048 {
+		t.Fatalf("num_predict = %v, want 2048", got.Options)
+	}
+}
+
+// TestOllamaProvider_EnvUnboundedSentinel verifies the -1 ("infinite
+// generation") sentinel is honored verbatim so operators can opt back into
+// unbounded output explicitly.
+func TestOllamaProvider_EnvUnboundedSentinel(t *testing.T) {
+	t.Setenv("OLLAMA_NUM_PREDICT", "-1")
+	p := NewOllamaProvider("http://placeholder", "qwen3:8b")
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "qwen3:8b", Prompt: "hi"})
+
+	if got.Options == nil || got.Options.NumPredict != -1 {
+		t.Fatalf("num_predict = %v, want -1", got.Options)
+	}
+}
+
+// TestMaxNumPredictForModel locks the model-aware bound to the reference's
+// max_tokens_for_model heuristic.
+func TestMaxNumPredictForModel(t *testing.T) {
+	if got := maxNumPredictForModel("claude-opus-4-6"); got != opusOllamaNumPredict {
+		t.Fatalf("opus bound = %d, want %d", got, opusOllamaNumPredict)
+	}
+	if got := maxNumPredictForModel("qwen3:32b"); got != defaultOllamaNumPredict {
+		t.Fatalf("default bound = %d, want %d", got, defaultOllamaNumPredict)
 	}
 }
 
