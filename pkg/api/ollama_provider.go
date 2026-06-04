@@ -124,7 +124,38 @@ type ollamaChatRequest struct {
 	Model    string          `json:"model"`
 	Messages []ollamaMessage `json:"messages"`
 	Stream   bool            `json:"stream"`
-	Options  *ollamaOptions  `json:"options,omitempty"`
+	// Tools carries the native tool specs (Ollama function-calling). It is
+	// omitted entirely for plain text turns so the single-turn SendMessage wire
+	// format is unchanged.
+	Tools   []ollamaTool   `json:"tools,omitempty"`
+	Options *ollamaOptions `json:"options,omitempty"`
+}
+
+// ollamaTool / ollamaToolFunction render a ToolDefinition into Ollama's native
+// /api/chat `tools` array shape: {"type":"function","function":{name,
+// description, parameters}}. Parameters is the JSON-Schema object taken verbatim
+// from the registered tool spec — schemas are never hand-written here.
+type ollamaTool struct {
+	Type     string             `json:"type"`
+	Function ollamaToolFunction `json:"function"`
+}
+
+type ollamaToolFunction struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters"`
+}
+
+// ollamaToolCall mirrors an entry of Ollama's response message.tool_calls. The
+// arguments come back as a decoded JSON object (a map), not an encoded string,
+// so they are consumed directly.
+type ollamaToolCall struct {
+	Function ollamaToolCallFunction `json:"function"`
+}
+
+type ollamaToolCallFunction struct {
+	Name      string         `json:"name"`
+	Arguments map[string]any `json:"arguments"`
 }
 
 // ollamaOptions carries Ollama's native generation options. Only num_predict
@@ -137,6 +168,13 @@ type ollamaOptions struct {
 type ollamaMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// ToolCalls is set on assistant responses that request tools, and when
+	// re-sending the accumulated assistant turn back to the model. Omitted for
+	// plain turns so the single-turn wire format is unchanged.
+	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
+	// ToolName labels a "tool" role message with the tool it reports on (Ollama
+	// native field). Omitted for non-tool messages.
+	ToolName string `json:"tool_name,omitempty"`
 }
 
 type ollamaChatStreamLine struct {
@@ -216,4 +254,124 @@ func (p *OllamaProvider) SendMessage(request MessageRequest) (MessageResponse, e
 	}
 
 	return MessageResponse{Text: accumulated}, nil
+}
+
+// Chat runs ONE agentic turn against {BaseURL}/api/chat using Ollama's native
+// tool-calling. It sends the accumulated conversation (request.Messages) plus
+// the available tool definitions as the `tools` array, streams assistant text
+// deltas to request.Stream as they arrive (when non-nil), and returns the full
+// assistant text together with any tool calls parsed from the structured
+// message.tool_calls field. The runtime owns the multi-turn loop; this method
+// is a thin, single-turn transport mirroring the Rust reference's per-iteration
+// api_client.stream call (crates/runtime/src/conversation.rs).
+func (p *OllamaProvider) Chat(request ChatRequest) (ChatResponse, error) {
+	model := request.Model
+	if model == "" {
+		model = p.Model
+	}
+
+	numPredict := p.NumPredict
+	if numPredict == 0 {
+		numPredict = maxNumPredictForModel(model)
+	}
+
+	messages := make([]ollamaMessage, 0, len(request.Messages))
+	for _, m := range request.Messages {
+		messages = append(messages, toOllamaMessage(m))
+	}
+
+	var tools []ollamaTool
+	if len(request.Tools) > 0 {
+		tools = make([]ollamaTool, 0, len(request.Tools))
+		for _, t := range request.Tools {
+			tools = append(tools, ollamaTool{
+				Type: "function",
+				Function: ollamaToolFunction{
+					Name:        t.Name,
+					Description: t.Description,
+					Parameters:  t.Parameters,
+				},
+			})
+		}
+	}
+
+	reqBody := ollamaChatRequest{
+		Model:    model,
+		Messages: messages,
+		// Stream so assistant text can be surfaced incrementally; tool_calls are
+		// aggregated across the streamed chunks regardless.
+		Stream:  true,
+		Tools:   tools,
+		Options: &ollamaOptions{NumPredict: numPredict},
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return ChatResponse{}, fmt.Errorf("ollama: marshal chat request: %w", err)
+	}
+
+	httpResp, err := p.Client.Post(p.BaseURL+"/api/chat", "application/json", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return ChatResponse{}, fmt.Errorf("ollama: http post: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		return ChatResponse{}, fmt.Errorf("ollama: unexpected status %d", httpResp.StatusCode)
+	}
+
+	var accumulated strings.Builder
+	var toolCalls []ToolCall
+	scanner := bufio.NewScanner(httpResp.Body)
+	scanner.Buffer(make([]byte, 256*1024), 256*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var streamLine ollamaChatStreamLine
+		if err := json.Unmarshal(line, &streamLine); err != nil {
+			return ChatResponse{}, fmt.Errorf("ollama: decode chat stream line: %w", err)
+		}
+		if streamLine.Message != nil {
+			if delta := streamLine.Message.Content; delta != "" {
+				accumulated.WriteString(delta)
+				if request.Stream != nil {
+					// Best-effort incremental surface; a write failure must not
+					// abort the turn (the full text is still returned).
+					fmt.Fprint(request.Stream, delta)
+				}
+			}
+			for i, tc := range streamLine.Message.ToolCalls {
+				toolCalls = append(toolCalls, ToolCall{
+					ID:        fmt.Sprintf("call_%d", len(toolCalls)+i),
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				})
+			}
+		}
+		if streamLine.Done {
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return ChatResponse{}, fmt.Errorf("ollama: read chat stream: %w", err)
+	}
+
+	return ChatResponse{Text: accumulated.String(), ToolCalls: toolCalls}, nil
+}
+
+// toOllamaMessage renders a provider-agnostic ChatMessage into the Ollama wire
+// message, carrying tool calls (assistant turns) and tool name (tool turns).
+func toOllamaMessage(m ChatMessage) ollamaMessage {
+	out := ollamaMessage{Role: m.Role, Content: m.Content, ToolName: m.ToolName}
+	if len(m.ToolCalls) > 0 {
+		out.ToolCalls = make([]ollamaToolCall, 0, len(m.ToolCalls))
+		for _, tc := range m.ToolCalls {
+			out.ToolCalls = append(out.ToolCalls, ollamaToolCall{
+				Function: ollamaToolCallFunction{Name: tc.Name, Arguments: tc.Arguments},
+			})
+		}
+	}
+	return out
 }
