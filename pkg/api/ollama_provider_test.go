@@ -248,6 +248,104 @@ func TestOllamaProvider_SendsSystemPrompt(t *testing.T) {
 	}
 }
 
+// TestOllamaProvider_ChatSendsToolsAndParsesToolCalls verifies the native
+// tool-calling path: the outgoing /api/chat request carries the `tools` array
+// built from the supplied definitions, and a streamed response containing
+// message.tool_calls is parsed into structured ChatResponse.ToolCalls (not
+// string-scraped).
+func TestOllamaProvider_ChatSendsToolsAndParsesToolCalls(t *testing.T) {
+	var captured ollamaChatRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/chat" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"calling tool"},"done":false}`)
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"bash","arguments":{"command":"ls"}}}]},"done":false}`)
+		fmt.Fprintln(w, `{"model":"test","done":true}`)
+	}))
+	defer srv.Close()
+
+	p := NewOllamaProvider(srv.URL, "test")
+	resp, err := p.Chat(ChatRequest{
+		Model: "test",
+		Messages: []ChatMessage{
+			{Role: "system", Content: "sys"},
+			{Role: "user", Content: "list files"},
+		},
+		Tools: []ToolDefinition{
+			{Name: "bash", Description: "run a command", Parameters: map[string]any{"type": "object"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Request carried the tools array, rendered as the native function shape.
+	if len(captured.Tools) != 1 {
+		t.Fatalf("expected 1 tool in request, got %d", len(captured.Tools))
+	}
+	if captured.Tools[0].Type != "function" || captured.Tools[0].Function.Name != "bash" {
+		t.Fatalf("tool rendered wrong: %+v", captured.Tools[0])
+	}
+	if captured.Tools[0].Function.Parameters == nil {
+		t.Fatal("tool parameters (schema) not forwarded")
+	}
+
+	// Response parsed text + structured tool call.
+	if resp.Text != "calling tool" {
+		t.Fatalf("text = %q, want %q", resp.Text, "calling tool")
+	}
+	if len(resp.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(resp.ToolCalls))
+	}
+	if resp.ToolCalls[0].Name != "bash" {
+		t.Fatalf("tool call name = %q, want bash", resp.ToolCalls[0].Name)
+	}
+	if got := resp.ToolCalls[0].Arguments["command"]; got != "ls" {
+		t.Fatalf("tool call arg command = %v, want ls", got)
+	}
+}
+
+// TestOllamaProvider_ChatStreamsDeltas verifies content deltas are written to
+// the request's Stream sink as they arrive.
+func TestOllamaProvider_ChatStreamsDeltas(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"Hel"},"done":false}`)
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"lo!"},"done":false}`)
+		fmt.Fprintln(w, `{"model":"test","done":true}`)
+	}))
+	defer srv.Close()
+
+	p := NewOllamaProvider(srv.URL, "test")
+	var sink strings.Builder
+	resp, err := p.Chat(ChatRequest{
+		Model:    "test",
+		Messages: []ChatMessage{{Role: "user", Content: "hi"}},
+		Stream:   &sink,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sink.String() != "Hello!" {
+		t.Fatalf("streamed sink = %q, want %q", sink.String(), "Hello!")
+	}
+	if resp.Text != "Hello!" {
+		t.Fatalf("aggregated text = %q, want %q", resp.Text, "Hello!")
+	}
+	if len(resp.ToolCalls) != 0 {
+		t.Fatalf("expected no tool calls, got %d", len(resp.ToolCalls))
+	}
+}
+
 func TestMockProvider_RetainsInterface(t *testing.T) {
 	var p Provider = MockProvider{}
 	resp, err := p.SendMessage(MessageRequest{Model: "m", Prompt: "hi"})

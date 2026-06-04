@@ -47,6 +47,11 @@ func main() {
 		promptConfig := config
 		promptConfig.ConsoleTelemetryWriter = os.Stderr
 		app := system.NewStarterSystemApplication(promptConfig)
+		// Stream assistant text deltas to stdout as they arrive (the agentic
+		// loop surfaces output incrementally); stdout still carries only model
+		// content since telemetry is routed to stderr above.
+		app.Runtime.Stream = os.Stdout
+		streamed := app.Runtime.StreamsOutput()
 		output, err := system.RunPromptOnce(app, promptText)
 		app.Shutdown()
 		if err != nil {
@@ -55,7 +60,13 @@ func main() {
 			fmt.Fprintln(os.Stderr, output)
 			os.Exit(1)
 		}
-		fmt.Println(output)
+		if streamed {
+			// The answer already streamed to stdout; emit only the terminating
+			// newline so we don't print it twice.
+			fmt.Println()
+		} else {
+			fmt.Println(output)
+		}
 		return
 	}
 
