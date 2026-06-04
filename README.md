@@ -136,6 +136,12 @@ Environment variables:
 - `EMBER_CONFIG_HOME` -- override config directory
 - `OLLAMA_BASE_URL` -- custom Ollama endpoint (default: `http://localhost:11434`)
 - `OLLAMA_MODEL` / `EMBER_MODEL` -- default Ollama model when `--model` is unset
+- `OLLAMA_NUM_PREDICT` -- output-token bound sent as Ollama `options.num_predict`.
+  Overrides the generous model-aware default (64000, or 32000 for opus-class
+  models, mirroring the Rust reference). Set `-1` for unbounded generation or
+  `-2` to fill the context. The default exists to prevent thinking models (e.g.
+  qwen3) from generating unbounded `<think>` output; it is large enough that
+  normal answers are never truncated.
 - `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` -- Anthropic API credentials
 - `XAI_API_KEY` -- xAI API credentials
 

@@ -70,8 +70,11 @@ Provider selection lives in `pkg/api` (`NewProviderForModel` → `DetectProvider
 
 Hosted-model requests with no matching credentials fall back to Ollama (logged,
 non-fatal). Other env vars: `OLLAMA_BASE_URL` (default `http://localhost:11434`),
-`OLLAMA_MODEL` / `EMBER_MODEL` (default Ollama model), `EMBER_CONFIG_HOME`
-(config dir override). Credentials in `.ember/settings.json` are read from the
+`OLLAMA_MODEL` / `EMBER_MODEL` (default Ollama model), `OLLAMA_NUM_PREDICT`
+(output-token bound sent as Ollama `options.num_predict`; overrides the
+model-aware default of 64000 / 32000 for opus-class, mirroring the Rust
+reference's `max_tokens_for_model`; `-1` = unbounded, `-2` = fill context),
+`EMBER_CONFIG_HOME` (config dir override). Credentials in `.ember/settings.json` are read from the
 **current working directory** as a fallback when env vars are unset.
 
 ## Tests
