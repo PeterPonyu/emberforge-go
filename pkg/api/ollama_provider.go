@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 )
 
 // OllamaProvider implements the Provider interface using Ollama's /api/chat endpoint.
@@ -25,6 +26,7 @@ func NewOllamaProvider(baseURL, model string) *OllamaProvider {
 	if baseURL == "" {
 		baseURL = "http://localhost:11434"
 	}
+	baseURL = normalizeOllamaBaseURL(baseURL)
 	if model == "" {
 		model = os.Getenv("OLLAMA_MODEL")
 	}
@@ -39,6 +41,20 @@ func NewOllamaProvider(baseURL, model string) *OllamaProvider {
 		Model:   model,
 		Client:  &http.Client{},
 	}
+}
+
+// normalizeOllamaBaseURL canonicalizes an Ollama base URL so that both the
+// native root form (http://HOST:PORT) and the OpenAI-compatible form
+// (http://HOST:PORT/v1) resolve to the same native root. The provider appends
+// the native "/api/chat" path, so a trailing "/v1" (and any trailing slashes)
+// must be stripped to avoid a double-path 404. It is idempotent and host/port
+// agnostic — no hardcoded host is assumed.
+func normalizeOllamaBaseURL(baseURL string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if strings.HasSuffix(trimmed, "/v1") {
+		trimmed = strings.TrimRight(strings.TrimSuffix(trimmed, "/v1"), "/")
+	}
+	return trimmed
 }
 
 type ollamaChatRequest struct {

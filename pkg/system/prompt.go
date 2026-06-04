@@ -12,6 +12,11 @@ import "strings"
 // handed to ConversationRuntime.RunTurn exactly once. The control-sequence engine
 // bootstraps on first use, records the turn in the session, and emits telemetry,
 // so a one-shot run has the same side effects as a single REPL line.
-func RunPromptOnce(app *StarterSystemApplication, promptText string) string {
-	return app.Sequence.Handle(strings.TrimSpace(promptText)).Output
+//
+// It returns the rendered output along with the real error from the turn (nil on
+// success) so the caller can exit non-zero on a genuine provider failure without
+// inspecting the rendered text.
+func RunPromptOnce(app *StarterSystemApplication, promptText string) (string, error) {
+	record := app.Sequence.Handle(strings.TrimSpace(promptText))
+	return record.Output, record.Err
 }

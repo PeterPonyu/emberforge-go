@@ -1,5 +1,7 @@
 package system
 
+import "io"
+
 // TelemetryMode selects how the application records telemetry events.
 type TelemetryMode string
 
@@ -28,6 +30,10 @@ type StarterSystemConfig struct {
 	// When empty, the default $EMBER_CONFIG_HOME/telemetry/<session>.jsonl
 	// location is used.
 	TelemetryPath string
+	// ConsoleTelemetryWriter overrides where the console telemetry sink writes.
+	// When nil, the sink writes to os.Stdout (the original behaviour). One-shot
+	// prompt mode sets this to os.Stderr so stdout carries only the model answer.
+	ConsoleTelemetryWriter io.Writer
 }
 
 func DefaultStarterSystemConfig() StarterSystemConfig {

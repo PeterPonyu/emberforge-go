@@ -49,7 +49,7 @@ func newSessionID() string {
 // sink so the application never aborts on telemetry setup.
 func buildTelemetrySink(config StarterSystemConfig, sessionID string) telemetry.TelemetrySink {
 	if config.TelemetryMode != TelemetryModeJSONL {
-		return telemetry.ConsoleTelemetrySink{}
+		return telemetry.ConsoleTelemetrySink{Writer: config.ConsoleTelemetryWriter}
 	}
 	path := config.TelemetryPath
 	if path == "" {
@@ -58,7 +58,7 @@ func buildTelemetrySink(config StarterSystemConfig, sessionID string) telemetry.
 	sink, err := telemetry.NewJsonlTelemetrySink(sessionID, path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "telemetry: falling back to console sink: %v\n", err)
-		return telemetry.ConsoleTelemetrySink{}
+		return telemetry.ConsoleTelemetrySink{Writer: config.ConsoleTelemetryWriter}
 	}
 	return sink
 }

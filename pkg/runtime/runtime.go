@@ -27,10 +27,25 @@ func NewConversationRuntime(provider api.Provider, toolExecutor tools.ToolExecut
 	}
 }
 
+// RunTurn runs a single turn and returns the rendered output, discarding any
+// underlying provider error. It is preserved for callers that only need the
+// display text (e.g. the REPL and demo paths); callers that must react to a
+// genuine failure (e.g. the one-shot `ember prompt` exit code) should use
+// RunTurnResult instead.
 func (r *ConversationRuntime) RunTurn(input string) string {
+	output, _ := r.RunTurnResult(input)
+	return output
+}
+
+// RunTurnResult runs a single turn and returns both the rendered output and the
+// real error value from the provider (or tool) when the turn genuinely failed.
+// The error is plumbed through unchanged — callers exit non-zero on it rather
+// than string-matching the rendered "[ollama error] ..." text.
+func (r *ConversationRuntime) RunTurnResult(input string) (string, error) {
 	r.Telemetry.Record(telemetry.Event{Name: "turn_started", Details: input})
 
 	var output string
+	var turnErr error
 
 	if strings.HasPrefix(input, "/tool ") {
 		payload := strings.TrimPrefix(input, "/tool ")
@@ -42,6 +57,7 @@ func (r *ConversationRuntime) RunTurn(input string) string {
 			Prompt: input,
 		})
 		if err != nil {
+			turnErr = err
 			output = fmt.Sprintf("[ollama error] %s", err.Error())
 			r.Telemetry.Record(telemetry.Event{Name: "provider_error", Details: output})
 		} else {
@@ -51,7 +67,7 @@ func (r *ConversationRuntime) RunTurn(input string) string {
 	}
 
 	r.Session.AddTurn(SessionTurn{Input: input, Output: output})
-	return output
+	return output, turnErr
 }
 
 func (r *ConversationRuntime) TurnCount() int {

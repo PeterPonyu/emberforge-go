@@ -42,9 +42,19 @@ func main() {
 			fmt.Fprintln(os.Stderr, "usage: ember prompt \"<text>\"")
 			os.Exit(2)
 		}
-		app := system.NewStarterSystemApplication(config)
-		output := system.RunPromptOnce(app, promptText)
+		// One-shot prompt mode: stdout must carry ONLY the model answer, so
+		// route console telemetry/diagnostics to stderr via the sink writer.
+		promptConfig := config
+		promptConfig.ConsoleTelemetryWriter = os.Stderr
+		app := system.NewStarterSystemApplication(promptConfig)
+		output, err := system.RunPromptOnce(app, promptText)
 		app.Shutdown()
+		if err != nil {
+			// A genuine provider/runtime failure: surface it on stderr and exit
+			// non-zero so callers can detect it (matches Rust/C++/TS behaviour).
+			fmt.Fprintln(os.Stderr, output)
+			os.Exit(1)
+		}
 		fmt.Println(output)
 		return
 	}
