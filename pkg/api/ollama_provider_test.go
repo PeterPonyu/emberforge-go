@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -221,6 +222,29 @@ func TestMaxNumPredictForModel(t *testing.T) {
 	}
 	if got := maxNumPredictForModel("qwen3:32b"); got != defaultOllamaNumPredict {
 		t.Fatalf("default bound = %d, want %d", got, defaultOllamaNumPredict)
+	}
+}
+
+// TestOllamaProvider_SendsSystemPrompt asserts the outgoing /api/chat request
+// prepends a "system" role message carrying the ported agent system prompt
+// (identified by a stable intro marker line) ahead of the user message. This is
+// the core parity guarantee: the model is now framed as the agent before it
+// sees the user prompt.
+func TestOllamaProvider_SendsSystemPrompt(t *testing.T) {
+	p := NewOllamaProvider("http://placeholder", "qwen3:8b")
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "qwen3:8b", Prompt: "hi"})
+
+	if len(got.Messages) != 2 {
+		t.Fatalf("expected [system, user] messages, got %d: %+v", len(got.Messages), got.Messages)
+	}
+	if got.Messages[0].Role != "system" {
+		t.Fatalf("first message role = %q, want \"system\"", got.Messages[0].Role)
+	}
+	if !strings.Contains(got.Messages[0].Content, systemPromptIntroMarker) {
+		t.Fatalf("system message missing intro marker %q; content: %q", systemPromptIntroMarker, got.Messages[0].Content)
+	}
+	if got.Messages[1].Role != "user" || got.Messages[1].Content != "hi" {
+		t.Fatalf("second message = %+v, want user/\"hi\"", got.Messages[1])
 	}
 }
 

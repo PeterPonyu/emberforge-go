@@ -164,9 +164,12 @@ func (p *OllamaProvider) SendMessage(request MessageRequest) (MessageResponse, e
 		numPredict = maxNumPredictForModel(model)
 	}
 
+	// Prepend the ported agent system prompt ahead of the user message so the
+	// model is framed identically to the Rust reference (true parity).
 	reqBody := ollamaChatRequest{
 		Model: model,
 		Messages: []ollamaMessage{
+			{Role: "system", Content: BuildSystemPrompt()},
 			{Role: "user", Content: request.Prompt},
 		},
 		Stream:  true,

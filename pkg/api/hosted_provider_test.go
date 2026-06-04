@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -48,6 +49,11 @@ func TestAnthropicProvider_RequestConstructionAndResponse(t *testing.T) {
 	}
 	if gotBody.Model != "claude-opus-4-6" || len(gotBody.Messages) != 1 || gotBody.Messages[0].Content != "hi there" {
 		t.Errorf("unexpected request body: %+v", gotBody)
+	}
+	// The ported agent system prompt is carried in Anthropic's top-level
+	// `system` field (not a message role), so the messages array stays user-only.
+	if !strings.Contains(gotBody.System, systemPromptIntroMarker) {
+		t.Errorf("expected system field to contain %q, got %q", systemPromptIntroMarker, gotBody.System)
 	}
 }
 
@@ -95,8 +101,16 @@ func TestOpenAICompatProvider_RequestConstructionAndResponse(t *testing.T) {
 	if gotAuth != "Bearer xai-key" {
 		t.Errorf("authorization %q want Bearer xai-key", gotAuth)
 	}
-	if gotBody.Model != "grok-3" || len(gotBody.Messages) != 1 || gotBody.Messages[0].Content != "hello grok" {
+	// The ported agent system prompt is prepended as a "system" role message, so
+	// the messages array is [system, user].
+	if gotBody.Model != "grok-3" || len(gotBody.Messages) != 2 {
 		t.Errorf("unexpected request body: %+v", gotBody)
+	}
+	if gotBody.Messages[0].Role != "system" || !strings.Contains(gotBody.Messages[0].Content, systemPromptIntroMarker) {
+		t.Errorf("expected first message to be system prompt, got %+v", gotBody.Messages[0])
+	}
+	if gotBody.Messages[1].Role != "user" || gotBody.Messages[1].Content != "hello grok" {
+		t.Errorf("expected second message to be the user prompt, got %+v", gotBody.Messages[1])
 	}
 }
 
