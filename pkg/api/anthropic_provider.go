@@ -37,7 +37,7 @@ func NewAnthropicProvider(auth AuthSource, model string) *AnthropicProvider {
 		BaseURL: baseURL,
 		Model:   model,
 		Auth:    auth,
-		Client:  &http.Client{},
+		Client:  newStreamingHTTPClient(),
 	}
 }
 
@@ -49,6 +49,7 @@ type anthropicMessage struct {
 type anthropicRequest struct {
 	Model     string             `json:"model"`
 	MaxTokens int                `json:"max_tokens"`
+	System    string             `json:"system,omitempty"`
 	Messages  []anthropicMessage `json:"messages"`
 	Stream    bool               `json:"stream"`
 }
@@ -70,9 +71,13 @@ func (p *AnthropicProvider) SendMessage(request MessageRequest) (MessageResponse
 		model = p.Model
 	}
 
+	// Frame the turn with the ported agent system prompt. Anthropic carries the
+	// system prompt as a top-level field (not a "system" role message), so the
+	// messages array stays user-only.
 	reqBody := anthropicRequest{
 		Model:     model,
 		MaxTokens: defaultAnthropicMaxTok,
+		System:    BuildSystemPrompt(),
 		Messages: []anthropicMessage{
 			{Role: "user", Content: request.Prompt},
 		},

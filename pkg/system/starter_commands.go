@@ -206,20 +206,7 @@ func ExecuteStarterSlashCommand(app *StarterSystemApplication, input string) (st
 		}
 		return fmt.Sprintf("[command] doctor: unsupported mode %s", payload), true
 	case "model":
-		activeModel := os.Getenv("OLLAMA_MODEL")
-		if strings.TrimSpace(activeModel) == "" {
-			activeModel = os.Getenv("EMBER_MODEL")
-		}
-		if strings.TrimSpace(activeModel) == "" {
-			activeModel = "qwen3:8b"
-		}
-		if payload == "list" {
-			return fmt.Sprintf("[command] model list: %s", activeModel), true
-		}
-		if strings.TrimSpace(payload) == "" {
-			payload = activeModel
-		}
-		return fmt.Sprintf("[command] model: %s", payload), true
+		return executeModelCommand(app, payload), true
 	case "init":
 		return executeInitCommand(payload), true
 	case "questions":

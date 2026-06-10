@@ -1,9 +1,12 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -77,6 +80,269 @@ func TestOllamaProvider_DefaultModelFromEnv(t *testing.T) {
 	p := NewOllamaProvider("", "")
 	if p.Model != "env-model" {
 		t.Fatalf("got model %q want %q", p.Model, "env-model")
+	}
+}
+
+// TestNormalizeOllamaBaseURL verifies the base URL is canonicalized
+// idempotently and host/port agnostically: both the native root form and the
+// OpenAI-compatible "/v1" form collapse to the same native root, and existing
+// root configs are untouched.
+func TestNormalizeOllamaBaseURL(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"http://localhost:11434", "http://localhost:11434"},
+		{"http://localhost:11434/", "http://localhost:11434"},
+		{"http://localhost:11434/v1", "http://localhost:11434"},
+		{"http://localhost:11434/v1/", "http://localhost:11434"},
+		{"http://127.0.0.1:9999/v1", "http://127.0.0.1:9999"},
+		{"http://remote-host:8080", "http://remote-host:8080"},
+		{"  http://localhost:11434/v1  ", "http://localhost:11434"},
+	}
+	for _, tc := range cases {
+		if got := normalizeOllamaBaseURL(tc.in); got != tc.want {
+			t.Errorf("normalizeOllamaBaseURL(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+		// Idempotency: normalizing an already-normalized value is a no-op.
+		if got := normalizeOllamaBaseURL(tc.want); got != tc.want {
+			t.Errorf("normalizeOllamaBaseURL is not idempotent for %q: got %q", tc.want, got)
+		}
+	}
+}
+
+// TestOllamaProvider_V1SuffixReachesChatEndpoint verifies that a base URL with
+// the OpenAI-compatible "/v1" suffix still routes to the native /api/chat path
+// (D1) rather than 404ing on /v1/api/chat.
+func TestOllamaProvider_V1SuffixReachesChatEndpoint(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/chat" {
+			t.Fatalf("unexpected path %s (base /v1 suffix not normalized)", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"hi"},"done":true}`)
+	}))
+	defer srv.Close()
+
+	p := NewOllamaProvider(srv.URL+"/v1", "test")
+	resp, err := p.SendMessage(MessageRequest{Model: "test", Prompt: "hi"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Text != "hi" {
+		t.Fatalf("got %q want %q", resp.Text, "hi")
+	}
+}
+
+// captureOllamaRequest spins up a stub /api/chat server, runs one SendMessage
+// against the supplied provider, and returns the decoded request body the
+// provider sent. It fails the test on any transport error.
+func captureOllamaRequest(t *testing.T, p *OllamaProvider, req MessageRequest) ollamaChatRequest {
+	t.Helper()
+	var captured ollamaChatRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"ok"},"done":true}`)
+	}))
+	defer srv.Close()
+
+	p.BaseURL = srv.URL
+	if _, err := p.SendMessage(req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return captured
+}
+
+// TestOllamaProvider_SendsModelAwareNumPredict asserts the request body carries
+// the model-aware default num_predict (mirroring the Rust reference) when no
+// explicit override is configured.
+func TestOllamaProvider_SendsModelAwareNumPredict(t *testing.T) {
+	p := NewOllamaProvider("http://placeholder", "qwen3:8b")
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "qwen3:8b", Prompt: "hi"})
+
+	if got.Options == nil {
+		t.Fatal("expected options to be present in request body, got nil")
+	}
+	if got.Options.NumPredict != defaultOllamaNumPredict {
+		t.Fatalf("num_predict = %d, want %d", got.Options.NumPredict, defaultOllamaNumPredict)
+	}
+}
+
+// TestOllamaProvider_OpusModelUsesTighterBound mirrors the reference's
+// opus-class branch of max_tokens_for_model.
+func TestOllamaProvider_OpusModelUsesTighterBound(t *testing.T) {
+	p := NewOllamaProvider("http://placeholder", "some-opus-tag")
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "some-opus-tag", Prompt: "hi"})
+
+	if got.Options == nil || got.Options.NumPredict != opusOllamaNumPredict {
+		t.Fatalf("num_predict = %v, want %d", got.Options, opusOllamaNumPredict)
+	}
+}
+
+// TestOllamaProvider_EnvOverridesNumPredict asserts OLLAMA_NUM_PREDICT takes
+// precedence over the model-aware default and is sent verbatim.
+func TestOllamaProvider_EnvOverridesNumPredict(t *testing.T) {
+	t.Setenv("OLLAMA_NUM_PREDICT", "2048")
+	p := NewOllamaProvider("http://placeholder", "qwen3:8b")
+	if p.NumPredict != 2048 {
+		t.Fatalf("provider NumPredict = %d, want 2048", p.NumPredict)
+	}
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "qwen3:8b", Prompt: "hi"})
+
+	if got.Options == nil || got.Options.NumPredict != 2048 {
+		t.Fatalf("num_predict = %v, want 2048", got.Options)
+	}
+}
+
+// TestOllamaProvider_EnvUnboundedSentinel verifies the -1 ("infinite
+// generation") sentinel is honored verbatim so operators can opt back into
+// unbounded output explicitly.
+func TestOllamaProvider_EnvUnboundedSentinel(t *testing.T) {
+	t.Setenv("OLLAMA_NUM_PREDICT", "-1")
+	p := NewOllamaProvider("http://placeholder", "qwen3:8b")
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "qwen3:8b", Prompt: "hi"})
+
+	if got.Options == nil || got.Options.NumPredict != -1 {
+		t.Fatalf("num_predict = %v, want -1", got.Options)
+	}
+}
+
+// TestMaxNumPredictForModel locks the model-aware bound to the reference's
+// max_tokens_for_model heuristic.
+func TestMaxNumPredictForModel(t *testing.T) {
+	if got := maxNumPredictForModel("claude-opus-4-6"); got != opusOllamaNumPredict {
+		t.Fatalf("opus bound = %d, want %d", got, opusOllamaNumPredict)
+	}
+	if got := maxNumPredictForModel("qwen3:32b"); got != defaultOllamaNumPredict {
+		t.Fatalf("default bound = %d, want %d", got, defaultOllamaNumPredict)
+	}
+}
+
+// TestOllamaProvider_SendsSystemPrompt asserts the outgoing /api/chat request
+// prepends a "system" role message carrying the ported agent system prompt
+// (identified by a stable intro marker line) ahead of the user message. This is
+// the core parity guarantee: the model is now framed as the agent before it
+// sees the user prompt.
+func TestOllamaProvider_SendsSystemPrompt(t *testing.T) {
+	p := NewOllamaProvider("http://placeholder", "qwen3:8b")
+	got := captureOllamaRequest(t, p, MessageRequest{Model: "qwen3:8b", Prompt: "hi"})
+
+	if len(got.Messages) != 2 {
+		t.Fatalf("expected [system, user] messages, got %d: %+v", len(got.Messages), got.Messages)
+	}
+	if got.Messages[0].Role != "system" {
+		t.Fatalf("first message role = %q, want \"system\"", got.Messages[0].Role)
+	}
+	if !strings.Contains(got.Messages[0].Content, systemPromptIntroMarker) {
+		t.Fatalf("system message missing intro marker %q; content: %q", systemPromptIntroMarker, got.Messages[0].Content)
+	}
+	if got.Messages[1].Role != "user" || got.Messages[1].Content != "hi" {
+		t.Fatalf("second message = %+v, want user/\"hi\"", got.Messages[1])
+	}
+}
+
+// TestOllamaProvider_ChatSendsToolsAndParsesToolCalls verifies the native
+// tool-calling path: the outgoing /api/chat request carries the `tools` array
+// built from the supplied definitions, and a streamed response containing
+// message.tool_calls is parsed into structured ChatResponse.ToolCalls (not
+// string-scraped).
+func TestOllamaProvider_ChatSendsToolsAndParsesToolCalls(t *testing.T) {
+	var captured ollamaChatRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/chat" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"calling tool"},"done":false}`)
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"bash","arguments":{"command":"ls"}}}]},"done":false}`)
+		fmt.Fprintln(w, `{"model":"test","done":true}`)
+	}))
+	defer srv.Close()
+
+	p := NewOllamaProvider(srv.URL, "test")
+	resp, err := p.Chat(ChatRequest{
+		Model: "test",
+		Messages: []ChatMessage{
+			{Role: "system", Content: "sys"},
+			{Role: "user", Content: "list files"},
+		},
+		Tools: []ToolDefinition{
+			{Name: "bash", Description: "run a command", Parameters: map[string]any{"type": "object"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Request carried the tools array, rendered as the native function shape.
+	if len(captured.Tools) != 1 {
+		t.Fatalf("expected 1 tool in request, got %d", len(captured.Tools))
+	}
+	if captured.Tools[0].Type != "function" || captured.Tools[0].Function.Name != "bash" {
+		t.Fatalf("tool rendered wrong: %+v", captured.Tools[0])
+	}
+	if captured.Tools[0].Function.Parameters == nil {
+		t.Fatal("tool parameters (schema) not forwarded")
+	}
+
+	// Response parsed text + structured tool call.
+	if resp.Text != "calling tool" {
+		t.Fatalf("text = %q, want %q", resp.Text, "calling tool")
+	}
+	if len(resp.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(resp.ToolCalls))
+	}
+	if resp.ToolCalls[0].Name != "bash" {
+		t.Fatalf("tool call name = %q, want bash", resp.ToolCalls[0].Name)
+	}
+	if got := resp.ToolCalls[0].Arguments["command"]; got != "ls" {
+		t.Fatalf("tool call arg command = %v, want ls", got)
+	}
+}
+
+// TestOllamaProvider_ChatStreamsDeltas verifies content deltas are written to
+// the request's Stream sink as they arrive.
+func TestOllamaProvider_ChatStreamsDeltas(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"Hel"},"done":false}`)
+		fmt.Fprintln(w, `{"model":"test","message":{"role":"assistant","content":"lo!"},"done":false}`)
+		fmt.Fprintln(w, `{"model":"test","done":true}`)
+	}))
+	defer srv.Close()
+
+	p := NewOllamaProvider(srv.URL, "test")
+	var sink strings.Builder
+	resp, err := p.Chat(ChatRequest{
+		Model:    "test",
+		Messages: []ChatMessage{{Role: "user", Content: "hi"}},
+		Stream:   &sink,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sink.String() != "Hello!" {
+		t.Fatalf("streamed sink = %q, want %q", sink.String(), "Hello!")
+	}
+	if resp.Text != "Hello!" {
+		t.Fatalf("aggregated text = %q, want %q", resp.Text, "Hello!")
+	}
+	if len(resp.ToolCalls) != 0 {
+		t.Fatalf("expected no tool calls, got %d", len(resp.ToolCalls))
 	}
 }
 

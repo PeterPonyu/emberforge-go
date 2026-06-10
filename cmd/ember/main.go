@@ -36,6 +36,52 @@ func main() {
 		return
 	}
 
+	if flag.Arg(0) == "models" {
+		// List the real local models reported by Ollama's /api/tags (plus cloud
+		// shortcuts), mirroring the Rust reference's `ember models`. stdout must
+		// carry only the listing, so console telemetry is routed to stderr.
+		modelsConfig := config
+		modelsConfig.ConsoleTelemetryWriter = os.Stderr
+		app := system.NewStarterSystemApplication(modelsConfig)
+		fmt.Println(system.RenderModelsCommand(app))
+		app.Shutdown()
+		return
+	}
+
+	if flag.Arg(0) == "prompt" {
+		promptText := strings.TrimSpace(strings.Join(flag.Args()[1:], " "))
+		if promptText == "" {
+			fmt.Fprintln(os.Stderr, "usage: ember prompt \"<text>\"")
+			os.Exit(2)
+		}
+		// One-shot prompt mode: stdout must carry ONLY the model answer, so
+		// route console telemetry/diagnostics to stderr via the sink writer.
+		promptConfig := config
+		promptConfig.ConsoleTelemetryWriter = os.Stderr
+		app := system.NewStarterSystemApplication(promptConfig)
+		// Stream assistant text deltas to stdout as they arrive (the agentic
+		// loop surfaces output incrementally); stdout still carries only model
+		// content since telemetry is routed to stderr above.
+		app.Runtime.Stream = os.Stdout
+		streamed := app.Runtime.StreamsOutput()
+		output, err := system.RunPromptOnce(app, promptText)
+		app.Shutdown()
+		if err != nil {
+			// A genuine provider/runtime failure: surface it on stderr and exit
+			// non-zero so callers can detect it (matches Rust/C++/TS behaviour).
+			fmt.Fprintln(os.Stderr, output)
+			os.Exit(1)
+		}
+		if streamed {
+			// The answer already streamed to stdout; emit only the terminating
+			// newline so we don't print it twice.
+			fmt.Println()
+		} else {
+			fmt.Println(output)
+		}
+		return
+	}
+
 	if flag.Arg(0) == "init" {
 		app := system.NewStarterSystemApplication(config)
 		output, _ := system.ExecuteStarterSlashCommand(app, "/init "+strings.Join(flag.Args()[1:], " "))

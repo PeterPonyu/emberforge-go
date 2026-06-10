@@ -68,7 +68,7 @@ func NewOpenAICompatProvider(config OpenAICompatConfig, auth AuthSource, model s
 		BaseURL: baseURL,
 		Model:   model,
 		Auth:    auth,
-		Client:  &http.Client{},
+		Client:  newStreamingHTTPClient(),
 	}
 }
 
@@ -110,10 +110,13 @@ func (p *OpenAICompatProvider) SendMessage(request MessageRequest) (MessageRespo
 		model = p.Model
 	}
 
+	// Prepend the ported agent system prompt as a "system" role message ahead of
+	// the user message, framing the turn identically to the other providers.
 	reqBody := chatCompletionRequest{
 		Model:     model,
 		MaxTokens: defaultCompatMaxTok,
 		Messages: []chatMessage{
+			{Role: "system", Content: BuildSystemPrompt()},
 			{Role: "user", Content: request.Prompt},
 		},
 		Stream: false,

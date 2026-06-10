@@ -1,6 +1,10 @@
 package telemetry
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+	"os"
+)
 
 const TelemetryReference = "github.com/PeterPonyu/emberforge-go/pkg/telemetry"
 
@@ -13,8 +17,18 @@ type TelemetrySink interface {
 	Record(event Event)
 }
 
-type ConsoleTelemetrySink struct{}
+// ConsoleTelemetrySink writes human-readable telemetry lines to a configurable
+// writer. A zero-value sink (Writer == nil) writes to os.Stdout, preserving the
+// original behaviour; one-shot prompt mode configures Writer to os.Stderr so
+// stdout carries only the model answer.
+type ConsoleTelemetrySink struct {
+	Writer io.Writer
+}
 
-func (ConsoleTelemetrySink) Record(event Event) {
-	fmt.Printf("[telemetry] %s: %s\n", event.Name, event.Details)
+func (s ConsoleTelemetrySink) Record(event Event) {
+	w := s.Writer
+	if w == nil {
+		w = os.Stdout
+	}
+	fmt.Fprintf(w, "[telemetry] %s: %s\n", event.Name, event.Details)
 }
