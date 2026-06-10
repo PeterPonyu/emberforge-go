@@ -110,7 +110,7 @@ func NewOllamaProvider(baseURL, model string) *OllamaProvider {
 	return &OllamaProvider{
 		BaseURL:    baseURL,
 		Model:      model,
-		Client:     &http.Client{},
+		Client:     newStreamingHTTPClient(),
 		NumPredict: numPredict,
 	}
 }

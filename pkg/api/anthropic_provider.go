@@ -37,7 +37,7 @@ func NewAnthropicProvider(auth AuthSource, model string) *AnthropicProvider {
 		BaseURL: baseURL,
 		Model:   model,
 		Auth:    auth,
-		Client:  &http.Client{},
+		Client:  newStreamingHTTPClient(),
 	}
 }
 
