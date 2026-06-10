@@ -11,6 +11,12 @@ Emberforge is a terminal coding tool that works with local models through Ollama
 > `doctor`, slash commands, an HTTP/SSE server (`--serve`), and a non-interactive
 > demo run (see [Quick Start](#quick-start)).
 
+> **Parity status:** Core provider routing, streaming, thinking-separation, tool
+> dispatch, and session management are ported. The following items from the Rust
+> reference are **not yet ported**: the decision ledger (structured reasoning
+> log), LSP integration (`pkg/lsp` is a one-method stub), and user-level settings
+> (`~/.emberforge/settings.json`). Contributions welcome.
+
 ## Quick Start
 
 ```bash
@@ -79,7 +85,7 @@ pkg/
   api/            API client -- Ollama, Anthropic, OpenAI-compat provider routing
   commands/       Slash command definitions and registry
   compat/         Compatibility layer and path resolution
-  lsp/            Language Server Protocol integration
+  lsp/            Language Server Protocol integration (stub — one-method placeholder, not a working LSP client)
   plugins/        Plugin system with metadata and validation
   runtime/        Conversation runtime, session state, turn management
   server/         HTTP server infrastructure

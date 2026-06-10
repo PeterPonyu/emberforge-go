@@ -68,7 +68,7 @@ func NewOpenAICompatProvider(config OpenAICompatConfig, auth AuthSource, model s
 		BaseURL: baseURL,
 		Model:   model,
 		Auth:    auth,
-		Client:  &http.Client{},
+		Client:  newStreamingHTTPClient(),
 	}
 }
 
