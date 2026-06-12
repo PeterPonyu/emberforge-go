@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -46,6 +47,20 @@ type OllamaProvider struct {
 	// populated from OLLAMA_NUM_PREDICT in NewOllamaProvider and may be set
 	// directly by callers/tests.
 	NumPredict int
+	// ThinkingWriter receives a thinking model's separated reasoning when
+	// thinking display is enabled (EMBER_SHOW_THINKING). Nil falls back to
+	// os.Stderr so reasoning never contaminates stdout (the answer stream).
+	// Tests set it to capture the separated thinking content.
+	ThinkingWriter io.Writer
+}
+
+// thinkingSink returns the writer reasoning is surfaced to when enabled,
+// defaulting to stderr so stdout carries only the final answer.
+func (p *OllamaProvider) thinkingSink() io.Writer {
+	if p.ThinkingWriter != nil {
+		return p.ThinkingWriter
+	}
+	return os.Stderr
 }
 
 // maxNumPredictForModel returns the default output-token bound for a model,
@@ -78,13 +93,7 @@ func numPredictFromEnv() (int, bool) {
 // NewOllamaProvider constructs an OllamaProvider. BaseURL is read from OLLAMA_BASE_URL
 // env (default http://localhost:11434); model is supplied by the caller.
 func NewOllamaProvider(baseURL, model string) *OllamaProvider {
-	if baseURL == "" {
-		baseURL = os.Getenv("OLLAMA_BASE_URL")
-	}
-	if baseURL == "" {
-		baseURL = "http://localhost:11434"
-	}
-	baseURL = normalizeOllamaBaseURL(baseURL)
+	baseURL = resolveOllamaBaseURL(baseURL)
 	if model == "" {
 		model = os.Getenv("OLLAMA_MODEL")
 	}
@@ -101,9 +110,23 @@ func NewOllamaProvider(baseURL, model string) *OllamaProvider {
 	return &OllamaProvider{
 		BaseURL:    baseURL,
 		Model:      model,
-		Client:     &http.Client{},
+		Client:     newStreamingHTTPClient(),
 		NumPredict: numPredict,
 	}
+}
+
+// resolveOllamaBaseURL applies the standard base-URL precedence — explicit arg,
+// then OLLAMA_BASE_URL env, then the localhost default — and canonicalizes the
+// result via normalizeOllamaBaseURL. It is the single source of truth for where
+// Ollama lives, shared by the provider and the model-listing endpoint.
+func resolveOllamaBaseURL(baseURL string) string {
+	if baseURL == "" {
+		baseURL = os.Getenv("OLLAMA_BASE_URL")
+	}
+	if baseURL == "" {
+		baseURL = "http://localhost:11434"
+	}
+	return normalizeOllamaBaseURL(baseURL)
 }
 
 // normalizeOllamaBaseURL canonicalizes an Ollama base URL so that both the
@@ -168,6 +191,10 @@ type ollamaOptions struct {
 type ollamaMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// Thinking carries the structured reasoning Ollama returns when a request
+	// sets think:true (separate from Content). Preferred over inline <think>
+	// parsing when present; omitted on the wire for outgoing messages.
+	Thinking string `json:"thinking,omitempty"`
 	// ToolCalls is set on assistant responses that request tools, and when
 	// re-sending the accumulated assistant turn back to the model. Omitted for
 	// plain turns so the single-turn wire format is unchanged.
@@ -229,7 +256,8 @@ func (p *OllamaProvider) SendMessage(request MessageRequest) (MessageResponse, e
 		return MessageResponse{}, fmt.Errorf("ollama: unexpected status %d", httpResp.StatusCode)
 	}
 
-	var accumulated string
+	var rawContent strings.Builder
+	var structuredThinking strings.Builder
 	scanner := bufio.NewScanner(httpResp.Body)
 	// Increase scanner buffer to handle long lines gracefully.
 	scanner.Buffer(make([]byte, 256*1024), 256*1024)
@@ -243,7 +271,8 @@ func (p *OllamaProvider) SendMessage(request MessageRequest) (MessageResponse, e
 			return MessageResponse{}, fmt.Errorf("ollama: decode stream line: %w", err)
 		}
 		if streamLine.Message != nil {
-			accumulated += streamLine.Message.Content
+			rawContent.WriteString(streamLine.Message.Content)
+			structuredThinking.WriteString(streamLine.Message.Thinking)
 		}
 		if streamLine.Done {
 			break
@@ -253,7 +282,18 @@ func (p *OllamaProvider) SendMessage(request MessageRequest) (MessageResponse, e
 		return MessageResponse{}, fmt.Errorf("ollama: read stream: %w", err)
 	}
 
-	return MessageResponse{Text: accumulated}, nil
+	// Separate reasoning from the answer: prefer the structured thinking field,
+	// and also strip a well-formed LEADING <think>...</think> block from content
+	// (inline reasoning). stdout (the returned Text) carries the answer ONLY;
+	// thinking is surfaced to the thinking sink only when enabled.
+	answer, inlineThinking := stripLeadingThinkBlock(rawContent.String())
+	if ShowThinking() {
+		if combined := structuredThinking.String() + inlineThinking; combined != "" {
+			fmt.Fprint(p.thinkingSink(), combined)
+		}
+	}
+
+	return MessageResponse{Text: answer}, nil
 }
 
 // Chat runs ONE agentic turn against {BaseURL}/api/chat using Ollama's native
@@ -322,6 +362,33 @@ func (p *OllamaProvider) Chat(request ChatRequest) (ChatResponse, error) {
 
 	var accumulated strings.Builder
 	var toolCalls []ToolCall
+	// splitter separates a LEADING <think>...</think> block (inline reasoning)
+	// from the answer in a single streaming pass, so think content never streams
+	// to stdout. Structured message.thinking (think:true) is handled alongside.
+	var splitter thinkSplitter
+	showThinking := ShowThinking()
+	thinkingSink := p.thinkingSink()
+	// surfaceAnswer appends answer text to the aggregate and streams it (when a
+	// sink is configured); surfaceThinking routes reasoning to the thinking sink
+	// only when display is enabled.
+	surfaceAnswer := func(text string) {
+		if text == "" {
+			return
+		}
+		accumulated.WriteString(text)
+		if request.Stream != nil {
+			// Best-effort incremental surface; a write failure must not abort
+			// the turn (the full text is still returned).
+			fmt.Fprint(request.Stream, text)
+		}
+	}
+	surfaceThinking := func(text string) {
+		if text == "" || !showThinking {
+			return
+		}
+		fmt.Fprint(thinkingSink, text)
+	}
+
 	scanner := bufio.NewScanner(httpResp.Body)
 	scanner.Buffer(make([]byte, 256*1024), 256*1024)
 	for scanner.Scan() {
@@ -334,13 +401,12 @@ func (p *OllamaProvider) Chat(request ChatRequest) (ChatResponse, error) {
 			return ChatResponse{}, fmt.Errorf("ollama: decode chat stream line: %w", err)
 		}
 		if streamLine.Message != nil {
+			// Structured reasoning (think:true) arrives separately from content.
+			surfaceThinking(streamLine.Message.Thinking)
 			if delta := streamLine.Message.Content; delta != "" {
-				accumulated.WriteString(delta)
-				if request.Stream != nil {
-					// Best-effort incremental surface; a write failure must not
-					// abort the turn (the full text is still returned).
-					fmt.Fprint(request.Stream, delta)
-				}
+				ans, think := splitter.push(delta)
+				surfaceThinking(think)
+				surfaceAnswer(ans)
 			}
 			for i, tc := range streamLine.Message.ToolCalls {
 				toolCalls = append(toolCalls, ToolCall{
@@ -357,6 +423,11 @@ func (p *OllamaProvider) Chat(request ChatRequest) (ChatResponse, error) {
 	if err := scanner.Err(); err != nil {
 		return ChatResponse{}, fmt.Errorf("ollama: read chat stream: %w", err)
 	}
+
+	// Flush any text held back at a tag boundary once the stream ends.
+	ans, think := splitter.flush()
+	surfaceAnswer(ans)
+	surfaceThinking(think)
 
 	return ChatResponse{Text: accumulated.String(), ToolCalls: toolCalls}, nil
 }

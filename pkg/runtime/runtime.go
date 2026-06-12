@@ -46,6 +46,17 @@ type ConversationRuntime struct {
 	// Stream, when non-nil, receives assistant text deltas as they arrive during
 	// the agentic loop so callers can surface output incrementally. Nil buffers.
 	Stream io.Writer
+	// RoutingStrategy selects the model for each turn from the query's estimated
+	// complexity. The zero value is a Fixed strategy that defers to the provider's
+	// configured model, preserving the original single-model behavior. The
+	// `/model auto` and `/model hybrid` commands install a multi-model strategy.
+	RoutingStrategy api.RoutingStrategy
+	// ProviderForModel, when non-nil, returns the provider that should serve a
+	// routed model. It lets Auto/Hybrid routing cross provider boundaries (e.g.
+	// hybrid's cloud leg) correctly. When nil the routed model is still applied
+	// via the request's Model field against the existing provider (sufficient for
+	// same-provider routing such as Auto's local fast/capable split).
+	ProviderForModel func(model string) api.Provider
 }
 
 func NewConversationRuntime(provider api.Provider, toolExecutor tools.ToolExecutor, telemetrySink telemetry.TelemetrySink) *ConversationRuntime {
@@ -103,19 +114,30 @@ func (r *ConversationRuntime) RunTurnResult(input string) (string, error) {
 		return output, nil
 	}
 
-	if chatProvider, ok := r.Provider.(api.ChatProvider); ok {
-		return r.runAgenticLoop(chatProvider, input)
+	// Resolve the per-turn model and provider from the routing strategy. For a
+	// Fixed/zero strategy this is a no-op (empty model, existing provider).
+	routedModel := r.RoutingStrategy.SelectModel(input)
+	provider := r.Provider
+	if routedModel != "" && r.ProviderForModel != nil {
+		if p := r.ProviderForModel(routedModel); p != nil {
+			provider = p
+		}
 	}
 
-	return r.runSingleShot(input)
+	if chatProvider, ok := provider.(api.ChatProvider); ok {
+		return r.runAgenticLoop(chatProvider, input, routedModel)
+	}
+
+	return r.runSingleShot(provider, input)
 }
 
 // runSingleShot is the original single-turn path for providers that do not
-// implement api.ChatProvider.
-func (r *ConversationRuntime) runSingleShot(input string) (string, error) {
+// implement api.ChatProvider. The provider is supplied by the caller so routing
+// can substitute a per-turn provider.
+func (r *ConversationRuntime) runSingleShot(provider api.Provider, input string) (string, error) {
 	var output string
 	var turnErr error
-	response, err := r.Provider.SendMessage(api.MessageRequest{Model: "", Prompt: input})
+	response, err := provider.SendMessage(api.MessageRequest{Model: "", Prompt: input})
 	if err != nil {
 		turnErr = err
 		output = fmt.Sprintf("[ollama error] %s", err.Error())
@@ -135,7 +157,7 @@ func (r *ConversationRuntime) runSingleShot(input string) (string, error) {
 // results as `tool` role messages, and re-sends — until the model returns no
 // tool calls or the iteration bound is exceeded. Mirrors the Rust reference's
 // `'conversation` loop (crates/runtime/src/conversation.rs:210-258).
-func (r *ConversationRuntime) runAgenticLoop(provider api.ChatProvider, input string) (string, error) {
+func (r *ConversationRuntime) runAgenticLoop(provider api.ChatProvider, input, routedModel string) (string, error) {
 	messages := []api.ChatMessage{
 		{Role: "system", Content: api.BuildSystemPrompt()},
 		{Role: "user", Content: input},
@@ -154,7 +176,7 @@ func (r *ConversationRuntime) runAgenticLoop(provider api.ChatProvider, input st
 		}
 
 		resp, err := provider.Chat(api.ChatRequest{
-			Model:    "",
+			Model:    routedModel,
 			Messages: messages,
 			Tools:    toolDefs,
 			Stream:   r.Stream,

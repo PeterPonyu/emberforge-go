@@ -1,5 +1,6 @@
 # Build output
 bin/
+/ember
 *.exe
 *.test
 *.out
@@ -11,3 +12,6 @@ bin/
 
 # Dependencies (if vendored)
 vendor/
+
+# OMC orchestration state (never commit)
+.omc/

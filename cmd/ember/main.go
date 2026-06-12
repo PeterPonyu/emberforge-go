@@ -36,6 +36,18 @@ func main() {
 		return
 	}
 
+	if flag.Arg(0) == "models" {
+		// List the real local models reported by Ollama's /api/tags (plus cloud
+		// shortcuts), mirroring the Rust reference's `ember models`. stdout must
+		// carry only the listing, so console telemetry is routed to stderr.
+		modelsConfig := config
+		modelsConfig.ConsoleTelemetryWriter = os.Stderr
+		app := system.NewStarterSystemApplication(modelsConfig)
+		fmt.Println(system.RenderModelsCommand(app))
+		app.Shutdown()
+		return
+	}
+
 	if flag.Arg(0) == "prompt" {
 		promptText := strings.TrimSpace(strings.Join(flag.Args()[1:], " "))
 		if promptText == "" {
