@@ -102,8 +102,8 @@ selected per model in `pkg/api` (`NewProviderForModel` → `DetectProviderKind`)
 | Provider | Models / aliases | Auth |
 | --- | --- | --- |
 | **Ollama** (local, default) | any non-aliased model id (e.g. `qwen3:8b`, `llama3`, `gemma3`, `mistral`, `deepseek-r1`, `phi4`) | None needed |
-| **Anthropic** | `opus`, `sonnet`, `haiku` (alias to `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251213`) | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` (or `anthropicApiKey` in `.ember/settings.json`) |
-| **xAI** | `grok`, `grok-3`, `grok-mini`/`grok-3-mini`, `grok-2` | `XAI_API_KEY` (or `xaiApiKey` in `.ember/settings.json`) |
+| **Anthropic** | `opus`, `sonnet`, `haiku` (alias to `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251213`) | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` (or `anthropicApiKey` in project-local `.ember/settings.json`) |
+| **xAI** | `grok`, `grok-3`, `grok-mini`/`grok-3-mini`, `grok-2` | `XAI_API_KEY` (or `xaiApiKey` in project-local `.ember/settings.json`) |
 
 Selection rules:
 
@@ -126,16 +126,18 @@ Pick a model for any command (including the direct loop) with `--model`:
 
 ## Configuration
 
-Credential settings are read from `.ember/settings.json` in the current
-working directory (the `anthropicApiKey` and `xaiApiKey` fields are consulted
-as a fallback when the matching environment variables are unset). The `init`
-command scaffolds a project `.ember.json` alongside `EMBER.md` and `.gitignore`
-entries.
+Credential settings are read from project-local `.ember/settings.json` in the
+current working directory (the `anthropicApiKey` and `xaiApiKey` fields are
+consulted as a fallback when the matching environment variables are unset).
+The `init` command scaffolds a project `.ember.json` alongside `EMBER.md` and
+`.gitignore` entries.
 
-User-level settings (e.g. a `~/.emberforge/settings.json`) are not yet
-supported: the binary reads no settings file from your home directory. The
-`~/.emberforge/` directory is used only for state and telemetry (buddy state,
-task-question state, and telemetry logs).
+Directory names are intentionally split by responsibility: project `.ember/`
+holds workspace guidance and optional hosted-provider credential fallbacks,
+while `~/.emberforge/` (or `EMBER_CONFIG_HOME`) is only the state/telemetry home
+for buddy state, task-question state, and telemetry logs. User-level settings
+(e.g. `~/.ember/settings.json` or `~/.emberforge/settings.json`) are not yet
+supported: the binary reads no settings file from your home directory.
 
 Environment variables:
 
