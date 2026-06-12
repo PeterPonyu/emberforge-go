@@ -3,15 +3,15 @@ package system
 type LifecycleState string
 
 const (
-	LifecycleCreated      LifecycleState = "created"
+	LifecycleCreated       LifecycleState = "created"
 	LifecycleBootstrapping LifecycleState = "bootstrapping"
-	LifecycleReady        LifecycleState = "ready"
-	LifecycleDispatching  LifecycleState = "dispatching"
-	LifecycleExecuting    LifecycleState = "executing"
-	LifecyclePersisting   LifecycleState = "persisting"
-	LifecycleReporting    LifecycleState = "reporting"
-	LifecycleShuttingDown LifecycleState = "shutting_down"
-	LifecycleStopped      LifecycleState = "stopped"
+	LifecycleReady         LifecycleState = "ready"
+	LifecycleDispatching   LifecycleState = "dispatching"
+	LifecycleExecuting     LifecycleState = "executing"
+	LifecyclePersisting    LifecycleState = "persisting"
+	LifecycleReporting     LifecycleState = "reporting"
+	LifecycleShuttingDown  LifecycleState = "shutting_down"
+	LifecycleStopped       LifecycleState = "stopped"
 )
 
 type LifecycleTracker struct {
